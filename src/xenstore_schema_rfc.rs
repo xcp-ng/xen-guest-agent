@@ -4,31 +4,29 @@ use std::io;
 use std::net::IpAddr;
 use xenstore_rs::Xs;
 
-pub struct Schema {
-    xs: Xs,
-}
+pub struct Schema<XS: Xs>(XS);
 
 const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // FIXME: this should be a runtime config of xenstore-std.rs
 
-impl Schema {
-    pub fn new(xs: Xs) -> Box<dyn XenstoreSchema> {
-        Box::new(Schema { xs })
+impl<XS: Xs + 'static> Schema<XS> {
+    pub fn new(xs: XS) -> Box<dyn XenstoreSchema> {
+        Box::new(Schema(xs))
     }
 }
 
-impl XenstoreSchema for Schema {
+impl<XS: Xs> XenstoreSchema for Schema<XS> {
     fn publish_static(&mut self, os_info: &os_info::Info, kernel_info: &Option<KernelInfo>,
                       _mem_total_kb: Option<usize>,
     ) -> io::Result<()> {
-        xs_publish(&self.xs, "data/xen-guest-agent", PROTOCOL_VERSION)?;
-        xs_publish(&self.xs, "data/os/name",
+        xs_publish(&self.0, "data/xen-guest-agent", PROTOCOL_VERSION)?;
+        xs_publish(&self.0, "data/os/name",
                    &format!("{} {}", os_info.os_type(), os_info.version()))?;
-        xs_publish(&self.xs, "data/os/version", &os_info.version().to_string())?;
-        xs_publish(&self.xs, "data/os/class", "unix")?;
+        xs_publish(&self.0, "data/os/version", &os_info.version().to_string())?;
+        xs_publish(&self.0, "data/os/class", "unix")?;
         if let Some(kernel_info) = kernel_info {
-            xs_publish(&self.xs, "data/os/unix/kernel-version", &kernel_info.release)?;
+            xs_publish(&self.0, "data/os/unix/kernel-version", &kernel_info.release)?;
         }
 
         Ok(())
@@ -36,7 +34,7 @@ impl XenstoreSchema for Schema {
 
     fn cleanup_ifaces(&mut self) -> io::Result<()> {
         // Currently only vif interfaces are cleaned
-        xs_unpublish(&self.xs, "data/net")
+        xs_unpublish(&self.0, "data/net")
     }
 
     fn publish_memfree(&self, _mem_free_kb: usize) -> io::Result<()> {
@@ -50,24 +48,24 @@ impl XenstoreSchema for Schema {
         let xs_iface_prefix = format!("data/net/{iface_id}");
         match &event.op {
             NetEventOp::AddIface => {
-                xs_publish(&self.xs, &format!("{xs_iface_prefix}"), &event.iface.borrow().name)?;
+                xs_publish(&self.0, &format!("{xs_iface_prefix}"), &event.iface.borrow().name)?;
             },
             NetEventOp::RmIface => {
-                xs_unpublish(&self.xs, &format!("{xs_iface_prefix}"))?;
+                xs_unpublish(&self.0, &format!("{xs_iface_prefix}"))?;
             },
             NetEventOp::AddIp(address) => {
                 let key_suffix = munged_address(address);
-                xs_publish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}"), "")?;
+                xs_publish(&self.0, &format!("{xs_iface_prefix}/{key_suffix}"), "")?;
             },
             NetEventOp::RmIp(address) => {
                 let key_suffix = munged_address(address);
-                xs_unpublish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}"))?;
+                xs_unpublish(&self.0, &format!("{xs_iface_prefix}/{key_suffix}"))?;
             },
             NetEventOp::AddMac(mac_address) => {
-                xs_publish(&self.xs, &format!("{xs_iface_prefix}"), mac_address)?;
+                xs_publish(&self.0, &format!("{xs_iface_prefix}"), mac_address)?;
             },
             NetEventOp::RmMac(_) => {
-                xs_unpublish(&self.xs, &format!("{xs_iface_prefix}"))?;
+                xs_unpublish(&self.0, &format!("{xs_iface_prefix}"))?;
             },
         }
         Ok(())

@@ -2,7 +2,8 @@ use crate::datastructs::{KernelInfo, NetEvent};
 use std::env;
 use std::error::Error;
 use std::io;
-use xenstore_rs::{Xs, XsOpenFlags};
+use xenstore_rs::unix::XsUnix;
+use xenstore_rs::Xs;
 
 pub trait XenstoreSchema {
     fn publish_static(&mut self, os_info: &os_info::Info, kernel_info: &Option<KernelInfo>,
@@ -19,7 +20,7 @@ pub struct Publisher {
 
 impl Publisher {
     pub fn new() -> Result<Publisher, Box<dyn Error>> {
-        let xs = Xs::new(XsOpenFlags::ReadOnly)?;
+        let xs = XsUnix::new()?;
         let schema_name = env::var("XENSTORE_SCHEMA").unwrap_or("std".to_string());
         let schema_ctor = schema_from_name(&schema_name)?;
         let schema = schema_ctor(xs);
@@ -43,7 +44,7 @@ impl Publisher {
     }
 }
 
-fn schema_from_name(name: &str) -> io::Result<&'static dyn Fn(Xs) -> Box<dyn XenstoreSchema>> {
+fn schema_from_name<XS: Xs>(name: &str) -> io::Result<&'static dyn Fn(XS) -> Box<dyn XenstoreSchema>> {
     match name {
         "std" => Ok(&crate::xenstore_schema_std::Schema::new),
         "rfc" => Ok(&crate::xenstore_schema_rfc::Schema::new),
@@ -52,12 +53,12 @@ fn schema_from_name(name: &str) -> io::Result<&'static dyn Fn(Xs) -> Box<dyn Xen
     }
 }
 
-pub fn xs_publish(xs: &Xs, key: &str, value: &str) -> io::Result<()> {
+pub fn xs_publish(xs: &impl Xs, key: &str, value: &str) -> io::Result<()> {
     log::trace!("+ {}={:?}", key, value);
-    xs.write(None, key, value)
+    xs.write(key, value)
 }
 
-pub fn xs_unpublish(xs: &Xs, key: &str) -> io::Result<()> {
+pub fn xs_unpublish(xs: &impl Xs, key: &str) -> io::Result<()> {
     log::trace!("- {}", key);
-    xs.rm(None, key)
+    xs.rm(key)
 }

@@ -5,8 +5,8 @@ use std::io;
 use std::net::IpAddr;
 use xenstore_rs::Xs;
 
-pub struct Schema {
-    xs: Xs,
+pub struct Schema<XS: Xs + 'static> {
+    xs: XS,
     // use of integer indices for IP addresses requires to keep a mapping
     ip_addresses: IpList,
 
@@ -31,15 +31,15 @@ const AGENT_VERSION_MAJOR: &str = "1"; // XO does not show version at all if 0
 const AGENT_VERSION_MINOR: &str = "0";
 const AGENT_VERSION_MICRO: &str = "0"; // XAPI exposes "-1" if missing
 
-impl Schema {
-    pub fn new(xs: Xs) -> Box<dyn XenstoreSchema> {
+impl<XS: Xs + 'static> Schema<XS> {
+    pub fn new(xs: XS) -> Box<dyn XenstoreSchema> {
         let ip_addresses = IpList::new();
         Box::new(Schema { xs, ip_addresses,
                           forbidden_control_feature_balloon: false})
     }
 }
 
-impl XenstoreSchema for Schema {
+impl<XS: Xs> XenstoreSchema for Schema<XS> {
     fn publish_static(&mut self, os_info: &os_info::Info, kernel_info: &Option<KernelInfo>,
                       mem_total_kb: Option<usize>,
     ) -> io::Result<()> {
@@ -144,7 +144,7 @@ impl XenstoreSchema for Schema {
     }
 }
 
-impl Schema {
+impl<XS: Xs> Schema<XS> {
     fn munged_address(&mut self, addr: &IpAddr, iface: &NetInterface) -> io::Result<String> {
         let ip_entry = self.ip_addresses
             .entry(iface.index)

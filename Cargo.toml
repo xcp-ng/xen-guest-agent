@@ -24,10 +24,9 @@ env_logger = ">=0.10.0"
 clap = { version = "4.4.8", features = ["derive"] }
 
 [dependencies.xenstore-rs]
+git = "https://github.com/TSnake41/xenstore-rs.git"
+branch = "pure-rust"
 optional = true
-version = "0.7.0"
-#git = "https://github.com/Wenzel/xenstore.git"
-default-features = false
 
 [target.'cfg(unix)'.dependencies]
 uname = "0.1.1"
@@ -39,7 +38,6 @@ sysctl = "0.5.0"
 [features]
 default = ["xenstore", "net_netlink"]
 xenstore = ["dep:xenstore-rs"]
-static = ["xenstore-rs?/static"]
 net_netlink = ["dep:netlink-proto", "dep:netlink-packet-core", "dep:netlink-packet-route",
                "dep:rtnetlink"]
 net_pnet = ["dep:pnet_datalink", "dep:pnet_base", "dep:ipnetwork"]
