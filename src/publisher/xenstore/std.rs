@@ -1,11 +1,13 @@
 use crate::datastructs::{KernelInfo, NetEvent, NetEventOp, NetInterface, ToolstackNetInterface};
-use crate::publisher::{xs_publish, xs_unpublish, XenstoreSchema};
+use crate::publisher::Publisher;
 use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
 use xenstore_rs::Xs;
 
-pub struct Schema<XS: Xs + 'static> {
+use super::{xs_publish, xs_unpublish};
+
+pub struct XenstoreStd<XS: Xs + 'static> {
     xs: XS,
     // use of integer indices for IP addresses requires to keep a mapping
     ip_addresses: IpList,
@@ -31,17 +33,23 @@ const AGENT_VERSION_MAJOR: &str = "1"; // XO does not show version at all if 0
 const AGENT_VERSION_MINOR: &str = "0";
 const AGENT_VERSION_MICRO: &str = "0"; // XAPI exposes "-1" if missing
 
-impl<XS: Xs + 'static> Schema<XS> {
-    pub fn new(xs: XS) -> Box<dyn XenstoreSchema> {
+impl<XS: Xs + 'static> XenstoreStd<XS> {
+    pub fn new(xs: XS) -> Self {
         let ip_addresses = IpList::new();
-        Box::new(Schema { xs, ip_addresses,
-                          forbidden_control_feature_balloon: false})
+        XenstoreStd {
+            xs,
+            ip_addresses,
+            forbidden_control_feature_balloon: false,
+        }
     }
 }
 
-impl<XS: Xs> XenstoreSchema for Schema<XS> {
-    fn publish_static(&mut self, os_info: &os_info::Info, kernel_info: &Option<KernelInfo>,
-                      mem_total_kb: Option<usize>,
+impl<XS: Xs> Publisher for XenstoreStd<XS> {
+    fn publish_static(
+        &mut self,
+        os_info: &os_info::Info,
+        kernel_info: &Option<KernelInfo>,
+        mem_total_kb: Option<usize>,
     ) -> io::Result<()> {
         // FIXME this is not anywhere standard, just minimal XS compatibility
         xs_publish(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR)?;
@@ -51,8 +59,11 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
         xs_publish(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build)?;
 
         xs_publish(&self.xs, "data/os_distro", &os_info.os_type().to_string())?;
-        xs_publish(&self.xs, "data/os_name",
-                   &format!("{} {}", os_info.os_type(), os_info.version()))?;
+        xs_publish(
+            &self.xs,
+            "data/os_name",
+            &format!("{} {}", os_info.os_type(), os_info.version()),
+        )?;
         // FIXME .version only has "major" component right now; not a
         // big deal for a proto, os_minorver is known to be unreliable
         // in xe-guest-utilities at least for Debian
@@ -61,7 +72,7 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
             os_info::Version::Semantic(major, minor, _patch) => {
                 xs_publish(&self.xs, "data/os_majorver", &major.to_string())?;
                 xs_publish(&self.xs, "data/os_minorver", &minor.to_string())?;
-            },
+            }
             _ => {
                 // FIXME what to do with strings?
                 // the lack of `os_*ver` is anyway not a big deal
@@ -87,7 +98,7 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
                 Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
                     log::warn!("cannot write control/feature-balloon (impacts XAPI's squeezed)");
                     self.forbidden_control_feature_balloon = true;
-                },
+                }
                 Ok(_) => (),
                 e => return e,
             }
@@ -96,7 +107,7 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
         Ok(())
     }
 
-    fn publish_memfree(&self, mem_free_kb: usize) -> io::Result<()> {
+    fn publish_memfree(&mut self, mem_free_kb: usize) -> io::Result<()> {
         xs_publish(&self.xs, "data/meminfo_free", &mem_free_kb.to_string())?;
         Ok(())
     }
@@ -105,35 +116,35 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()> {
         let iface_id = match event.iface.borrow().toolstack_iface {
             ToolstackNetInterface::Vif(id) => id,
-            ToolstackNetInterface::None => {
-                panic!("publish_netevent called with no toolstack iface for {:?}", event);
-            },
         };
         let xs_iface_prefix = format!("attr/vif/{iface_id}");
         match &event.op {
             NetEventOp::AddIface => {
                 xs_publish(&self.xs, &xs_iface_prefix, "")?;
-            },
+            }
             NetEventOp::RmIface => {
                 xs_unpublish(&self.xs, &xs_iface_prefix)?;
-            },
+            }
             NetEventOp::AddIp(address) => {
                 let key_suffix = self.munged_address(address, &event.iface.borrow())?;
-                xs_publish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}"),
-                           &address.to_string())?;
-            },
+                xs_publish(
+                    &self.xs,
+                    &format!("{xs_iface_prefix}/{key_suffix}"),
+                    &address.to_string(),
+                )?;
+            }
             NetEventOp::RmIp(address) => {
                 let key_suffix = self.munged_address(address, &event.iface.borrow())?;
                 xs_unpublish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}"))?;
-            },
+            }
 
             // FIXME extend IfaceIpStruct for this
             NetEventOp::AddMac(_mac_address) => {
                 log::debug!("AddMac not applied");
-            },
+            }
             NetEventOp::RmMac(_mac_address) => {
                 log::debug!("RmMac not applied");
-            },
+            }
         }
         Ok(())
     }
@@ -144,13 +155,19 @@ impl<XS: Xs> XenstoreSchema for Schema<XS> {
     }
 }
 
-impl<XS: Xs> Schema<XS> {
+impl<XS: Xs> XenstoreStd<XS> {
     fn munged_address(&mut self, addr: &IpAddr, iface: &NetInterface) -> io::Result<String> {
-        let ip_entry = self.ip_addresses
+        let ip_entry = self
+            .ip_addresses
             .entry(iface.index)
-            .or_insert(IfaceIpStruct{v4: [None; NUM_IFACE_IPS], v6: [None; NUM_IFACE_IPS]});
-        let ip_list = match addr { IpAddr::V4(_) => &mut ip_entry.v4,
-                                   IpAddr::V6(_) => &mut ip_entry.v6 };
+            .or_insert(IfaceIpStruct {
+                v4: [None; NUM_IFACE_IPS],
+                v6: [None; NUM_IFACE_IPS],
+            });
+        let ip_list = match addr {
+            IpAddr::V4(_) => &mut ip_entry.v4,
+            IpAddr::V6(_) => &mut ip_entry.v6,
+        };
         let ip_slot = get_ip_slot(addr, ip_list)?;
         match addr {
             IpAddr::V4(_) => Ok(format!("ipv4/{ip_slot}")),
@@ -163,8 +180,16 @@ fn get_ip_slot(ip: &IpAddr, list: &mut IfaceIpList) -> io::Result<usize> {
     let mut empty_idx: Option<usize> = None;
     for (idx, item) in list.iter().enumerate() {
         match item {
-            Some(item) => if item == ip { return Ok(idx) }, // found
-            None => if empty_idx.is_none() { empty_idx = Some(idx) }
+            Some(item) => {
+                if item == ip {
+                    return Ok(idx);
+                }
+            } // found
+            None => {
+                if empty_idx.is_none() {
+                    empty_idx = Some(idx)
+                }
+            }
         }
     }
     // not found, insert in empty space if possible
@@ -172,6 +197,8 @@ fn get_ip_slot(ip: &IpAddr, list: &mut IfaceIpList) -> io::Result<usize> {
         list[idx] = Some(*ip);
         return Ok(idx);
     }
-    Err(io::Error::new(io::ErrorKind::OutOfMemory /*StorageFull?*/,
-                       "no free slot for a new IP address"))
+    Err(io::Error::new(
+        io::ErrorKind::OutOfMemory, /*StorageFull?*/
+        "no free slot for a new IP address",
+    ))
 }

@@ -22,6 +22,7 @@ ipnetwork = { version = "*", optional = true }
 log = "0.4.0"
 env_logger = ">=0.10.0"
 clap = { version = "4.4.8", features = ["derive"] }
+enum_dispatch = "0.3.13"
 
 [dependencies.xenstore-rs]
 git = "https://github.com/TSnake41/xenstore-rs.git"

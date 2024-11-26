@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::net::IpAddr;
 use std::rc::Rc;
 
+use crate::vif_detect::{PlatformVifDetector, VifDetector};
+
 pub struct KernelInfo {
     pub release: String,
 }
@@ -10,20 +12,10 @@ pub struct KernelInfo {
 #[non_exhaustive]
 #[derive(Clone, Debug)]
 pub enum ToolstackNetInterface {
-    None,
     Vif(u32),
     // SRIOV,
     // PciPassthrough,
     // UsbPassthrough,
-}
-
-impl ToolstackNetInterface {
-    pub fn is_none(&self) -> bool {
-        if let ToolstackNetInterface::None = self {
-            return true;
-        }
-        false
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -40,11 +32,12 @@ impl NetInterface {
             None => {
                 log::error!("new interface with index {index} has no name");
                 String::from("") // this is not valid, but user will now be aware
-            },
+            }
         };
-        NetInterface { index,
-                       name: name.clone(),
-                       toolstack_iface: crate::vif_detect::get_toolstack_interface(&name),
+        NetInterface {
+            index,
+            name: name.clone(),
+            toolstack_iface: PlatformVifDetector::get_toolstack_interface(&name).unwrap(),
         }
     }
 }
