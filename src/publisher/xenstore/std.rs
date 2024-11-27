@@ -120,8 +120,9 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
 
     // see https://xenbits.xen.org/docs/unstable/misc/xenstore-paths.html#domain-controlled-paths
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()> {
-        let iface_id = match event.iface.borrow().toolstack_iface {
+        let iface_id = match event.iface.lock().unwrap().toolstack_iface {
             ToolstackNetInterface::Vif(id) => id,
+            ToolstackNetInterface::Unknown => u32::MAX,
         };
         let xs_iface_prefix = format!("attr/vif/{iface_id}");
         match &event.op {
@@ -132,7 +133,7 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
                 xs_unpublish(&self.xs, &xs_iface_prefix)?;
             }
             NetEventOp::AddIp(address) => {
-                let key_suffix = self.munged_address(address, &event.iface.borrow())?;
+                let key_suffix = self.munged_address(address, &event.iface.lock().unwrap())?;
                 xs_publish(
                     &self.xs,
                     &format!("{xs_iface_prefix}/{key_suffix}"),
@@ -140,7 +141,7 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
                 )?;
             }
             NetEventOp::RmIp(address) => {
-                let key_suffix = self.munged_address(address, &event.iface.borrow())?;
+                let key_suffix = self.munged_address(address, &event.iface.lock().unwrap())?;
                 xs_unpublish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}"))?;
             }
 

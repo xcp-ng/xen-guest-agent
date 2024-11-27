@@ -1,6 +1,6 @@
 use crate::datastructs::{NetEvent, NetEventOp, NetInterface, NetInterfaceCache};
-use async_stream::try_stream;
 use futures::channel::mpsc::UnboundedReceiver;
+use futures::ready;
 use futures::stream::{Stream, StreamExt};
 use netlink_packet_core::{
     NetlinkHeader, NetlinkMessage, NetlinkPayload, NLM_F_DUMP, NLM_F_REQUEST,
@@ -13,11 +13,12 @@ use netlink_proto::{
     sys::{protocols::NETLINK_ROUTE, AsyncSocket, SocketAddr},
 };
 use rtnetlink::constants::{RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, RTMGRP_LINK};
-use std::cell::RefCell;
 use std::collections::hash_map;
 use std::io;
 use std::net::IpAddr;
-use std::rc::Rc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::vec::Vec;
 
 use super::NetworkSource;
@@ -29,24 +30,6 @@ pub struct NetlinkNetworkSource {
 }
 
 impl NetworkSource for NetlinkNetworkSource {
-    fn new() -> io::Result<Self> {
-        let (mut connection, handle, messages) = new_connection(NETLINK_ROUTE)?;
-        // What kinds of broadcast messages we want to listen for.
-        let nl_mgroup_flags = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
-        let nl_addr = SocketAddr::new(0, nl_mgroup_flags);
-        connection
-            .socket_mut()
-            .socket_mut()
-            .bind(&nl_addr)
-            .expect("failed to bind");
-        tokio::spawn(connection);
-        Ok(NetlinkNetworkSource {
-            handle,
-            messages,
-            iface_cache: Default::default(),
-        })
-    }
-
     async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
         let mut events = Vec::<NetEvent>::new();
 
@@ -92,21 +75,55 @@ impl NetworkSource for NetlinkNetworkSource {
 
         Ok(events)
     }
+}
 
-    fn stream(&mut self) -> impl Stream<Item = io::Result<NetEvent>> + '_ {
-        try_stream! {
-            while let Some((message, _)) = self.messages.next().await {
-                if let NetlinkMessage{payload: NetlinkPayload::InnerMessage(msg), ..} = message {
-                    for event in self.netevent_from_rtnetlink(&msg)? {
-                        yield event;
-                    }
-                }
+impl Stream for NetlinkNetworkSource {
+    type Item = Vec<NetEvent>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        loop {
+            let Some((message, _)) = ready!(self.messages.poll_next_unpin(cx)) else {
+                log::info!("No more netlink message");
+                return Poll::Ready(None);
             };
+
+            if let NetlinkMessage {
+                payload: NetlinkPayload::InnerMessage(msg),
+                ..
+            } = message
+            {
+                let Ok(events) = self
+                    .netevent_from_rtnetlink(&msg)
+                    .inspect_err(|e| log::error!("Unable to fetch netlink messages ({e})"))
+                else {
+                    return Poll::Ready(None);
+                };
+
+                return Poll::Ready(Some(events));
+            }
         }
     }
 }
 
 impl NetlinkNetworkSource {
+    pub fn new() -> io::Result<Self> {
+        let (mut connection, handle, messages) = new_connection(NETLINK_ROUTE)?;
+        // What kinds of broadcast messages we want to listen for.
+        let nl_mgroup_flags = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
+        let nl_addr = SocketAddr::new(0, nl_mgroup_flags);
+        connection
+            .socket_mut()
+            .socket_mut()
+            .bind(&nl_addr)
+            .expect("failed to bind");
+        tokio::spawn(connection);
+        Ok(NetlinkNetworkSource {
+            handle,
+            messages,
+            iface_cache: Default::default(),
+        })
+    }
+
     fn netevent_from_rtnetlink(
         &mut self,
         nl_msg: &RouteNetlinkMessage,
@@ -172,8 +189,8 @@ impl NetlinkNetworkSource {
         &mut self,
         msg: &LinkMessage,
     ) -> io::Result<(
-        Rc<RefCell<NetInterface>>, // ref to the (possibly new) impacted interface
-        Option<String>,            // MAC address
+        Arc<Mutex<NetInterface>>, // ref to the (possibly new) impacted interface
+        Option<String>,           // MAC address
     )> {
         let LinkMessage {
             header, attributes, ..
@@ -203,15 +220,15 @@ impl NetlinkNetworkSource {
             .iface_cache
             .entry(header.index)
             .or_insert_with_key(|index| {
-                RefCell::new(NetInterface::new(*index, iface_name.clone())).into()
+                Mutex::new(NetInterface::new(*index, iface_name.clone())).into()
             });
 
         // handle renaming
         if let Some(iface_name) = iface_name {
-            let iface_renamed = iface.borrow().name != iface_name;
+            let iface_renamed = iface.lock().unwrap().name != iface_name;
             if iface_renamed {
                 log::trace!("name change: {iface:?} now named '{iface_name}'");
-                iface.borrow_mut().name = iface_name;
+                iface.lock().unwrap().name = iface_name;
             }
         };
 
@@ -221,7 +238,7 @@ impl NetlinkNetworkSource {
     fn nl_addressmessage_decode(
         &mut self,
         msg: &AddressMessage,
-    ) -> io::Result<(Rc<RefCell<NetInterface>>, IpAddr)> {
+    ) -> io::Result<(Arc<Mutex<NetInterface>>, IpAddr)> {
         let AddressMessage {
             header, attributes, ..
         } = msg;

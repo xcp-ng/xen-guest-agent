@@ -1,7 +1,7 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::net::IpAddr;
-use std::rc::Rc;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use crate::vif_detect::{PlatformVifDetector, VifDetector};
 
@@ -10,8 +10,10 @@ pub struct KernelInfo {
 }
 
 #[non_exhaustive]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub enum ToolstackNetInterface {
+    #[default]
+    Unknown,
     Vif(u32),
     // SRIOV,
     // PciPassthrough,
@@ -37,10 +39,13 @@ impl NetInterface {
         NetInterface {
             index,
             name: name.clone(),
-            toolstack_iface: PlatformVifDetector::get_toolstack_interface(&name).unwrap(),
+            toolstack_iface: PlatformVifDetector::get_toolstack_interface(&name)
+                .unwrap_or_default(),
         }
     }
 }
+
+// TODO: Teddy: We should find a better solution than abusing Arc<Mutex>>
 
 // The cache of currently-known network interfaces.  We have to use
 // reference counting on the cached items, as we want on one hand to
@@ -49,7 +54,7 @@ impl NetInterface {
 // use `&'static NetInterface` because we can do the latter, which is
 // good in the end.
 // The interface may change name after creation (hence `RefCell`).
-pub type NetInterfaceCache = HashMap<u32, Rc<RefCell<NetInterface>>>;
+pub type NetInterfaceCache = HashMap<u32, Arc<Mutex<NetInterface>>>;
 
 #[derive(Debug)]
 pub enum NetEventOp {
@@ -63,6 +68,6 @@ pub enum NetEventOp {
 
 #[derive(Debug)]
 pub struct NetEvent {
-    pub iface: Rc<RefCell<NetInterface>>,
+    pub iface: Arc<Mutex<NetInterface>>,
     pub op: NetEventOp,
 }

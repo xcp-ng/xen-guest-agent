@@ -15,7 +15,7 @@ pub fn xs_unpublish(xs: &impl Xs, key: &str) -> io::Result<()> {
     xs.rm(key)
 }
 
-pub trait XsBuild: Sized + Xs {
+pub trait XsBuild: Sized + Xs + Send {
     fn new() -> io::Result<Self>;
 }
 

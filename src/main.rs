@@ -9,24 +9,11 @@ mod vif_detect;
 use clap::Parser;
 use log::LevelFilter;
 use provider::memory::{MemorySource, PlatformMemorySource};
-use provider::net::{NetworkSource, PlatformNetworkSource};
+use provider::net::{AgentNetworkSource, NetworkSourceKind};
 use publisher::xenstore::PlatformXs;
-use publisher::AgentPublisher;
+use publisher::PublisherKind;
 
 const MEM_PERIOD_SECONDS: f64 = 5.0;
-
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = GuestAgentConfig::parse();
-
-    setup_logger(config.stderr, config.log_level)?;
-
-    let publisher = AgentPublisher::<PlatformXs>::new()?;
-    let collector_memory = PlatformMemorySource::new()?;
-    let collector_net = PlatformNetworkSource::new()?;
-
-    logic::run(config, publisher, collector_memory, collector_net).await
-}
 
 #[derive(clap::Parser)]
 struct GuestAgentConfig {
@@ -38,11 +25,35 @@ struct GuestAgentConfig {
     #[arg(short, long, default_value_t = LevelFilter::Info)]
     log_level: LevelFilter,
 
+    /// Whether we report NICs.
     #[arg(short, long, default_value_t = true)]
     report_nics: bool,
 
+    /// Update period.
     #[arg(short, long, default_value_t = MEM_PERIOD_SECONDS)]
     period: f64,
+
+    #[arg(long, value_enum, default_value_t = Default::default())]
+    publisher: PublisherKind,
+
+    #[arg(long, value_enum, default_value_t = Default::default())]
+    network: NetworkSourceKind,
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = GuestAgentConfig::parse();
+
+    setup_logger(config.stderr, config.log_level)?;
+
+    let publisher_channel: tokio::sync::mpsc::Sender<publisher::GuestMetric> =
+        publisher::spawn_publisher::<PlatformXs>(config.publisher)
+            .expect("Unable to initialize publisher");
+    let collector_memory = PlatformMemorySource::new().expect("Unable to initialize memory source");
+    let collector_net =
+        AgentNetworkSource::new(config.network).expect("Unable to initialize network source");
+
+    logic::run(config, publisher_channel, collector_memory, collector_net).await
 }
 
 fn setup_logger(use_stderr: bool, level: LevelFilter) -> anyhow::Result<()> {

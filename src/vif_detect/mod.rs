@@ -1,6 +1,8 @@
 use crate::datastructs::ToolstackNetInterface;
 
+#[cfg(target_os = "freebsd")]
 pub mod freebsd;
+#[cfg(target_os = "linux")]
 pub mod linux;
 
 pub trait VifDetector: Default {
@@ -8,7 +10,7 @@ pub trait VifDetector: Default {
 }
 
 #[derive(Default)]
-struct DummyVifDetector;
+pub struct DummyVifDetector;
 
 impl VifDetector for DummyVifDetector {
     fn get_toolstack_interface(_iface_name: &str) -> Option<ToolstackNetInterface> {

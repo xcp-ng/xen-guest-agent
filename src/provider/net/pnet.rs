@@ -1,16 +1,19 @@
 use crate::datastructs::{NetEvent, NetEventOp, NetInterface, NetInterfaceCache};
-use async_stream::try_stream;
+use futures::ready;
 use futures::stream::Stream;
 use ipnetwork::IpNetwork;
 use pnet_base::MacAddr;
-use std::cell::RefCell;
 use std::collections::{hash_map, HashMap, HashSet};
-use std::error::Error;
 use std::io;
-use std::rc::Rc;
+use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
+use tokio::time::Interval;
 
-const IFACE_PERIOD_SECONDS: u64 = 60;
+use super::NetworkSource;
+
+const IFACE_PERIOD_SECONDS: f32 = 60.0;
 
 #[derive(Debug, Eq, Hash, PartialEq)]
 enum Address {
@@ -34,33 +37,41 @@ impl InterfaceInfo {
 }
 
 type AddressesState = HashMap<u32, InterfaceInfo>;
-pub struct NetworkSource {
+pub struct PnetNetworkSource {
     addresses_cache: AddressesState,
-    iface_cache: &'static mut NetInterfaceCache,
+    iface_cache: NetInterfaceCache,
+    timer: Interval,
 }
 
-impl NetworkSource {
-    pub fn new(iface_cache: &'static mut NetInterfaceCache) -> io::Result<NetworkSource> {
-        Ok(NetworkSource {
-            addresses_cache: AddressesState::new(),
-            iface_cache,
-        })
-    }
+impl PnetNetworkSource {}
 
-    pub async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
+impl NetworkSource for PnetNetworkSource {
+    async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
         Ok(self.get_ifconfig_data()?)
     }
+}
 
-    pub fn stream(&mut self) -> impl Stream<Item = io::Result<NetEvent>> + '_ {
-        try_stream! {
-            let mut interval = tokio::time::interval(Duration::from_secs(IFACE_PERIOD_SECONDS));
-            loop {
-                interval.tick().await;
-                for net_event in self.get_ifconfig_data()? {
-                     yield net_event;
-                }
-            }
-        }
+impl Stream for PnetNetworkSource {
+    type Item = Vec<NetEvent>;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        ready!(self.timer.poll_tick(cx));
+
+        Poll::Ready(
+            self.get_ifconfig_data()
+                .inspect_err(|e| log::error!("Unable to fetch network data {e}"))
+                .ok(),
+        )
+    }
+}
+
+impl PnetNetworkSource {
+    pub fn new() -> io::Result<Self> {
+        Ok(Self {
+            addresses_cache: AddressesState::new(),
+            iface_cache: HashMap::new(),
+            timer: tokio::time::interval(Duration::from_secs_f32(IFACE_PERIOD_SECONDS)),
+        })
     }
 
     fn get_ifconfig_data(&mut self) -> io::Result<Vec<NetEvent>> {
@@ -109,7 +120,11 @@ impl NetworkSource {
                 Some(iface_info) => {
                     let iface_adresses = &iface_info.addresses;
                     for disappearing in cached_info.addresses.difference(iface_adresses) {
-                        log::trace!("disappearing {}: {:?}", iface.borrow().name, disappearing);
+                        log::trace!(
+                            "disappearing {}: {:?}",
+                            iface.lock().unwrap().name,
+                            disappearing
+                        );
                         events.push(NetEvent {
                             iface: iface.clone(),
                             op: match disappearing {
@@ -134,7 +149,7 @@ impl NetworkSource {
                 .iface_cache
                 .entry(*iface_index)
                 .or_insert_with_key(|index| {
-                    let iface = Rc::new(RefCell::new(NetInterface::new(
+                    let iface = Arc::new(Mutex::new(NetInterface::new(
                         *index,
                         Some(iface_info.name.clone()),
                     )));
@@ -151,7 +166,7 @@ impl NetworkSource {
                 &empty_address_set
             };
             for appearing in iface_info.addresses.difference(cache_adresses) {
-                log::trace!("appearing {}: {:?}", iface.borrow().name, appearing);
+                log::trace!("appearing {}: {:?}", iface.lock().unwrap().name, appearing);
                 events.push(NetEvent {
                     iface: iface.clone(),
                     op: match appearing {

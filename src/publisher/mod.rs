@@ -3,7 +3,8 @@ pub mod xenstore;
 
 use crate::datastructs::{KernelInfo, NetEvent, NetEventOp};
 use enum_dispatch::enum_dispatch;
-use std::{env, io};
+use std::io;
+use tokio::sync::mpsc;
 use xenstore::{rfc::XenstoreRfc, std::XenstoreStd, XsBuild};
 use xenstore_rs::Xs;
 
@@ -15,6 +16,13 @@ pub struct OsInfo {
 pub struct MemoryInfo {
     pub mem_free: usize,
     pub mem_total: usize,
+}
+
+pub enum GuestMetric {
+    OsInfo(OsInfo),
+    MemoryInfo(MemoryInfo),
+    Network(NetEvent),
+    CleanupIfaces,
 }
 
 #[enum_dispatch]
@@ -50,7 +58,7 @@ impl Publisher for ConsolePublisher {
         Ok(())
     }
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()> {
-        let iface_id = &event.iface.borrow().name;
+        let iface_id = &event.iface.lock().unwrap().name;
         match &event.op {
             NetEventOp::AddIface => println!("{iface_id} +IFACE"),
             NetEventOp::RmIface => println!("{iface_id} -IFACE"),
@@ -67,6 +75,14 @@ impl Publisher for ConsolePublisher {
     }
 }
 
+#[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
+pub enum PublisherKind {
+    Console,
+    #[default]
+    Xenstore,
+    XenstoreRfc,
+}
+
 #[enum_dispatch(Publisher)]
 pub enum AgentPublisher<XS: Xs + 'static> {
     Console(ConsolePublisher),
@@ -76,11 +92,32 @@ pub enum AgentPublisher<XS: Xs + 'static> {
 
 impl<XS: XsBuild> AgentPublisher<XS> {
     #[allow(clippy::wildcard_in_or_patterns)]
-    pub fn new() -> io::Result<Self> {
-        match env::var("XENSTORE_PUBLISHER").unwrap_or_default().as_str() {
-            "console" => Ok(Self::Console(ConsolePublisher)),
-            "rfc" => Ok(Self::XenstoreRfc(XenstoreRfc::new(XS::new()?))),
-            "std" | _ => Ok(Self::XenstoreStd(XenstoreStd::new(XS::new()?))),
+    pub fn new(kind: PublisherKind) -> io::Result<Self> {
+        match kind {
+            PublisherKind::Console => Ok(Self::Console(ConsolePublisher)),
+            PublisherKind::Xenstore => Ok(Self::XenstoreStd(XenstoreStd::new(XS::new()?))),
+            PublisherKind::XenstoreRfc => Ok(Self::XenstoreRfc(XenstoreRfc::new(XS::new()?))),
         }
     }
+}
+
+pub fn spawn_publisher<XS: XsBuild + 'static>(
+    kind: PublisherKind,
+) -> io::Result<mpsc::Sender<GuestMetric>> {
+    let (tx, mut rx) = mpsc::channel(4);
+    let mut publisher = AgentPublisher::<XS>::new(kind)?;
+
+    tokio::spawn(async move {
+        while let Some(metric) = rx.recv().await {
+            match &metric {
+                GuestMetric::OsInfo(os_info) => publisher.publish_osinfo(os_info),
+                GuestMetric::MemoryInfo(memory_info) => publisher.publish_memory(memory_info),
+                GuestMetric::Network(net_event) => publisher.publish_netevent(net_event),
+                GuestMetric::CleanupIfaces => publisher.cleanup_ifaces(),
+            }
+            .unwrap()
+        }
+    });
+
+    Ok(tx)
 }

@@ -52,14 +52,14 @@ impl<XS: Xs> Publisher for XenstoreRfc<XS> {
 
     #[allow(clippy::useless_format)]
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()> {
-        let iface_id = &event.iface.borrow().index;
+        let iface_id = &event.iface.lock().unwrap().index;
         let xs_iface_prefix = format!("data/net/{iface_id}");
         match &event.op {
             NetEventOp::AddIface => {
                 xs_publish(
                     &self.0,
                     &format!("{xs_iface_prefix}"),
-                    &event.iface.borrow().name,
+                    &event.iface.lock().unwrap().name,
                 )?;
             }
             NetEventOp::RmIface => {

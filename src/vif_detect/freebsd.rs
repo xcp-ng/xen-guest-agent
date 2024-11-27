@@ -1,7 +1,7 @@
 use crate::datastructs::ToolstackNetInterface;
 
 #[derive(Default)]
-struct FreebsdVifDetector;
+pub struct FreebsdVifDetector;
 
 impl super::VifDetector for FreebsdVifDetector {
     // identifies a VIF as named "xn%ID"
