@@ -1,11 +1,12 @@
-use crate::datastructs::{KernelInfo, NetEvent, NetEventOp};
-use crate::publisher::Publisher;
+use crate::datastructs::{NetEvent, NetEventOp};
+use crate::publisher::{MemoryInfo, OsInfo, Publisher};
 use std::io;
 use std::net::IpAddr;
 use xenstore_rs::Xs;
 
 use super::{xs_publish, xs_unpublish};
 
+#[derive(Clone)]
 pub struct XenstoreRfc<XS: Xs>(XS);
 
 const PROTOCOL_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -19,21 +20,20 @@ impl<XS: Xs + 'static> XenstoreRfc<XS> {
 }
 
 impl<XS: Xs> Publisher for XenstoreRfc<XS> {
-    fn publish_static(
-        &mut self,
-        os_info: &os_info::Info,
-        kernel_info: &Option<KernelInfo>,
-        _mem_total_kb: Option<usize>,
-    ) -> io::Result<()> {
+    fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
         xs_publish(&self.0, "data/xen-guest-agent", PROTOCOL_VERSION)?;
         xs_publish(
             &self.0,
             "data/os/name",
-            &format!("{} {}", os_info.os_type(), os_info.version()),
+            &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
         )?;
-        xs_publish(&self.0, "data/os/version", &os_info.version().to_string())?;
+        xs_publish(
+            &self.0,
+            "data/os/version",
+            &info.os_info.version().to_string(),
+        )?;
         xs_publish(&self.0, "data/os/class", "unix")?;
-        if let Some(kernel_info) = kernel_info {
+        if let Some(kernel_info) = &info.kernel_info {
             xs_publish(&self.0, "data/os/unix/kernel-version", &kernel_info.release)?;
         }
 
@@ -45,7 +45,7 @@ impl<XS: Xs> Publisher for XenstoreRfc<XS> {
         xs_unpublish(&self.0, "data/net")
     }
 
-    fn publish_memfree(&mut self, _mem_free_kb: usize) -> io::Result<()> {
+    fn publish_memory(&mut self, _mem_info: &MemoryInfo) -> io::Result<()> {
         //xs_publish(&self.xs, "data/meminfo_free", &mem_free_kb.to_string())?;
         Ok(())
     }

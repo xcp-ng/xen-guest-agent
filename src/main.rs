@@ -1,153 +1,74 @@
 mod datastructs;
 
-mod collector;
+mod logic;
+mod provider;
 mod publisher;
 mod vif_detect;
+//pub mod metrics;
 
 use clap::Parser;
-use collector::memory::{MemorySource, PlatformMemorySource};
-use collector::net::{NetworkSource, PlatformNetworkSource};
-use publisher::{AgentPublisher, Publisher};
-use datastructs::KernelInfo;
+use log::LevelFilter;
+use provider::memory::{MemorySource, PlatformMemorySource};
+use provider::net::{NetworkSource, PlatformNetworkSource};
+use publisher::xenstore::PlatformXs;
+use publisher::AgentPublisher;
 
-use futures::{pin_mut, select, FutureExt, TryStreamExt};
-use std::cell::LazyCell;
-use std::error::Error;
-use std::io;
-use std::str::FromStr;
-use std::time::Duration;
-
-const REPORT_INTERNAL_NICS: bool = false; // FIXME make this a CLI flag
-const MEM_PERIOD_SECONDS: u64 = 60;
-const DEFAULT_LOGLEVEL: &str = "info";
-
-//TODO: Shouldn't be like that
-struct LazyXs<XS: xenstore_rs::Xs>(LazyCell<XS>);
-
-impl<XS: xenstore_rs::Xs> xenstore_rs::Xs for LazyXs<XS> {
-    fn directory(&self, path: &str) -> io::Result<Vec<Box<str>>> {
-        self.0.directory(path)
-    }
-
-    fn read(&self, path: &str) -> io::Result<Box<str>> {
-        self.0.read(path)
-    }
-
-    fn write(&self, path: &str, data: &str) -> io::Result<()> {
-        self.0.write(path, data)
-    }
-
-    fn rm(&self, path: &str) -> io::Result<()> {
-        self.0.rm(path)
-    }
-}
+const MEM_PERIOD_SECONDS: f64 = 5.0;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
-    let cli = Cli::parse();
+async fn main() -> anyhow::Result<()> {
+    let config = GuestAgentConfig::parse();
 
-    setup_logger(cli.stderr, &cli.loglevel)?;
+    setup_logger(config.stderr, config.log_level)?;
 
-    let mut publisher = AgentPublisher::new(LazyXs(LazyCell::new(|| {
-        xenstore_rs::unix::XsUnix::new().expect("Xenstore not available")
-    })))?;
+    let publisher = AgentPublisher::<PlatformXs>::new()?;
+    let collector_memory = PlatformMemorySource::new()?;
+    let collector_net = PlatformNetworkSource::new()?;
 
-    let mut collector_memory = PlatformMemorySource::new()?;
-
-    // Remove old entries from previous agent to avoid having unknown
-    // interfaces. We will repopulate existing ones immediatly.
-    publisher.cleanup_ifaces()?;
-
-    let kernel_info = collect_kernel()?;
-    let mem_total_kb = match collector_memory.get_total_kb() {
-        Ok(mem_total_kb) => Some(mem_total_kb),
-        Err(error) if error.kind() == io::ErrorKind::Unsupported => {
-            log::warn!("Memory stats not supported");
-            None
-        }
-        // propagate errors other than io::ErrorKind::Unsupported
-        Err(error) => Err(error)?,
-    };
-    publisher.publish_static(&os_info::get(), &kernel_info, mem_total_kb)?;
-
-    // periodic memory stat
-    let mut timer_stream = tokio::time::interval(Duration::from_secs(MEM_PERIOD_SECONDS));
-
-    // network events
-    let mut collector_net = PlatformNetworkSource::new()?;
-    for event in collector_net.collect_current().await? {
-        if REPORT_INTERNAL_NICS {
-            publisher.publish_netevent(&event)?;
-        }
-    }
-    let netevent_stream = collector_net.stream();
-    pin_mut!(netevent_stream); // needed for iteration
-
-    // main loop
-    loop {
-        select! {
-            event = netevent_stream.try_next().fuse() => {
-                match event? {
-                    Some(event) => {
-                        if REPORT_INTERNAL_NICS {
-                            publisher.publish_netevent(&event)?;
-                        } else {
-                            log::debug!("no toolstack iface in {event:?}");
-                        }
-                    },
-                    // FIXME can't we handle those in `select!` directly?
-                    None => { /* closed? */ },
-                };
-            },
-            _ = timer_stream.tick().fuse() => {
-                match collector_memory.get_available_kb() {
-                    Ok(mem_avail_kb) => publisher.publish_memfree(mem_avail_kb)?,
-                    Err(ref e) if e.kind() == io::ErrorKind::Unsupported => (),
-                    Err(e) => Err(e)?,
-                }
-            },
-            complete => break,
-        }
-    }
-
-    Ok(())
+    logic::run(config, publisher, collector_memory, collector_net).await
 }
 
 #[derive(clap::Parser)]
-struct Cli {
+struct GuestAgentConfig {
     /// Print logs to stderr instead of system logs
     #[arg(short, long)]
     stderr: bool,
 
     /// Highest level of detail to log
-    #[arg(short, long, default_value_t = String::from(DEFAULT_LOGLEVEL))]
-    loglevel: String,
+    #[arg(short, long, default_value_t = LevelFilter::Info)]
+    log_level: LevelFilter,
+
+    #[arg(short, long, default_value_t = true)]
+    report_nics: bool,
+
+    #[arg(short, long, default_value_t = MEM_PERIOD_SECONDS)]
+    period: f64,
 }
 
-fn setup_logger(use_stderr: bool, loglevel_string: &str) -> Result<(), Box<dyn Error>> {
+fn setup_logger(use_stderr: bool, level: LevelFilter) -> anyhow::Result<()> {
     if use_stderr {
-        setup_env_logger(loglevel_string)?;
+        setup_env_logger(level)?;
     } else {
         #[cfg(not(unix))]
         panic!("no system logger supported");
 
         #[cfg(unix)]
-        setup_system_logger(loglevel_string)?;
+        setup_system_logger(level)?;
     }
     Ok(())
 }
 
 // stdout logger for platforms with no specific implementation
-fn setup_env_logger(loglevel_string: &str) -> Result<(), Box<dyn Error>> {
+fn setup_env_logger(level: LevelFilter) -> anyhow::Result<()> {
     // set default threshold to "info" not "error"
-    let env = env_logger::Env::default().default_filter_or(loglevel_string);
+    let env = env_logger::Env::default().default_filter_or(level.as_str());
     env_logger::Builder::from_env(env).init();
     Ok(())
 }
 
 #[cfg(unix)]
 // syslog logger
-fn setup_system_logger(loglevel_string: &str) -> Result<(), Box<dyn Error>> {
+fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
     let formatter = syslog::Formatter3164 {
         facility: syslog::Facility::LOG_USER,
         hostname: None,
@@ -163,23 +84,6 @@ fn setup_system_logger(loglevel_string: &str) -> Result<(), Box<dyn Error>> {
         Ok(logger) => logger,
     };
     log::set_boxed_logger(Box::new(syslog::BasicLogger::new(logger)))?;
-    log::set_max_level(log::LevelFilter::from_str(loglevel_string)?);
+    log::set_max_level(level);
     Ok(())
-}
-
-// UNIX uname() implementation
-#[cfg(unix)]
-fn collect_kernel() -> io::Result<Option<KernelInfo>> {
-    let uname_info = uname::uname()?;
-    let info = KernelInfo {
-        release: uname_info.release,
-    };
-
-    Ok(Some(info))
-}
-
-// default implementation
-#[cfg(not(unix))]
-fn collect_kernel() -> io::Result<Option<KernelInfo>> {
-    Ok(None)
 }

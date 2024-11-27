@@ -3,20 +3,24 @@ pub mod xenstore;
 
 use crate::datastructs::{KernelInfo, NetEvent, NetEventOp};
 use enum_dispatch::enum_dispatch;
-use os_info;
 use std::{env, io};
-use xenstore::{rfc::XenstoreRfc, std::XenstoreStd};
+use xenstore::{rfc::XenstoreRfc, std::XenstoreStd, XsBuild};
 use xenstore_rs::Xs;
+
+pub struct OsInfo {
+    pub os_info: os_info::Info,
+    pub kernel_info: Option<KernelInfo>,
+}
+
+pub struct MemoryInfo {
+    pub mem_free: usize,
+    pub mem_total: usize,
+}
 
 #[enum_dispatch]
 pub trait Publisher: Sized {
-    fn publish_static(
-        &mut self,
-        os_info: &os_info::Info,
-        kernel_info: &Option<KernelInfo>,
-        mem_total_kb: Option<usize>,
-    ) -> io::Result<()>;
-    fn publish_memfree(&mut self, mem_free_kb: usize) -> io::Result<()>;
+    fn publish_osinfo(&mut self, os_info: &OsInfo) -> io::Result<()>;
+    fn publish_memory(&mut self, mem_info: &MemoryInfo) -> io::Result<()>;
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()>;
 
     fn cleanup_ifaces(&mut self) -> io::Result<()>;
@@ -26,23 +30,23 @@ pub trait Publisher: Sized {
 pub struct ConsolePublisher;
 
 impl Publisher for ConsolePublisher {
-    fn publish_static(
-        &mut self,
-        os_info: &os_info::Info,
-        kernel_info: &Option<KernelInfo>,
-        mem_total_kb: Option<usize>,
-    ) -> io::Result<()> {
-        println!("OS: {} - Version: {}", os_info.os_type(), os_info.version());
-        if let Some(mem_total_kb) = mem_total_kb {
-            println!("Total memory: {mem_total_kb} KB");
-        }
-        if let Some(KernelInfo { release }) = kernel_info {
-            println!("Kernel version: {}", release);
+    fn publish_osinfo(&mut self, os_info: &OsInfo) -> io::Result<()> {
+        println!(
+            "OS: {} - Version: {}",
+            os_info.os_info.os_type(),
+            os_info.os_info.version()
+        );
+        if let Some(KernelInfo { release }) = &os_info.kernel_info {
+            println!("Kernel version: {release}");
         }
         Ok(())
     }
-    fn publish_memfree(&mut self, mem_free_kb: usize) -> io::Result<()> {
-        println!("Free memory: {mem_free_kb} KB");
+    fn publish_memory(&mut self, mem_info: &MemoryInfo) -> io::Result<()> {
+        println!(
+            "Memory: {}/{} KB",
+            mem_info.mem_free / 1024,
+            mem_info.mem_total / 1024
+        );
         Ok(())
     }
     fn publish_netevent(&mut self, event: &NetEvent) -> io::Result<()> {
@@ -70,12 +74,13 @@ pub enum AgentPublisher<XS: Xs + 'static> {
     XenstoreStd(XenstoreStd<XS>),
 }
 
-impl<XS: Xs> AgentPublisher<XS> {
-    pub fn new(xs: XS) -> io::Result<Self> {
+impl<XS: XsBuild> AgentPublisher<XS> {
+    #[allow(clippy::wildcard_in_or_patterns)]
+    pub fn new() -> io::Result<Self> {
         match env::var("XENSTORE_PUBLISHER").unwrap_or_default().as_str() {
-            "console" => Ok(Self::Console(ConsolePublisher::default())),
-            "rfc" => Ok(Self::XenstoreRfc(XenstoreRfc::new(xs))),
-            "std" | _ => Ok(Self::XenstoreStd(XenstoreStd::new(xs))),
+            "console" => Ok(Self::Console(ConsolePublisher)),
+            "rfc" => Ok(Self::XenstoreRfc(XenstoreRfc::new(XS::new()?))),
+            "std" | _ => Ok(Self::XenstoreStd(XenstoreStd::new(XS::new()?))),
         }
     }
 }

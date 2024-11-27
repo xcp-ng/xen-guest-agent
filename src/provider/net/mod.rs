@@ -5,12 +5,11 @@ pub mod pnet;
 
 use crate::datastructs::NetEvent;
 use futures::stream::Stream;
-use std::error::Error;
 use std::io;
 
 pub trait NetworkSource: Sized {
     fn new() -> io::Result<Self>;
-    async fn collect_current(&mut self) -> Result<Vec<NetEvent>, Box<dyn Error>>;
+    async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>>;
     fn stream(&mut self) -> impl Stream<Item = io::Result<NetEvent>> + '_;
 }
 
@@ -21,7 +20,7 @@ impl NetworkSource for DummyNetworkSource {
         Ok(Self)
     }
 
-    async fn collect_current(&mut self) -> Result<Vec<NetEvent>, Box<dyn Error>> {
+    async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
         Ok(vec![])
     }
 

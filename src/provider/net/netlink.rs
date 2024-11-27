@@ -15,7 +15,6 @@ use netlink_proto::{
 use rtnetlink::constants::{RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, RTMGRP_LINK};
 use std::cell::RefCell;
 use std::collections::hash_map;
-use std::error::Error;
 use std::io;
 use std::net::IpAddr;
 use std::rc::Rc;
@@ -48,7 +47,7 @@ impl NetworkSource for NetlinkNetworkSource {
         })
     }
 
-    async fn collect_current(&mut self) -> Result<Vec<NetEvent>, Box<dyn Error>> {
+    async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
         let mut events = Vec::<NetEvent>::new();
 
         // Create the netlink message that requests the links to be dumped

@@ -1,5 +1,6 @@
-use crate::datastructs::{KernelInfo, NetEvent, NetEventOp, NetInterface, ToolstackNetInterface};
+use crate::datastructs::{NetEvent, NetEventOp, NetInterface, ToolstackNetInterface};
 use crate::publisher::Publisher;
+use crate::publisher::{MemoryInfo, OsInfo};
 use std::collections::HashMap;
 use std::io;
 use std::net::IpAddr;
@@ -45,12 +46,7 @@ impl<XS: Xs + 'static> XenstoreStd<XS> {
 }
 
 impl<XS: Xs> Publisher for XenstoreStd<XS> {
-    fn publish_static(
-        &mut self,
-        os_info: &os_info::Info,
-        kernel_info: &Option<KernelInfo>,
-        mem_total_kb: Option<usize>,
-    ) -> io::Result<()> {
+    fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
         // FIXME this is not anywhere standard, just minimal XS compatibility
         xs_publish(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR)?;
         xs_publish(&self.xs, "attr/PVAddons/MinorVersion", AGENT_VERSION_MINOR)?;
@@ -58,16 +54,20 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
         let agent_version_build = format!("proto-{}", &env!("CARGO_PKG_VERSION"));
         xs_publish(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build)?;
 
-        xs_publish(&self.xs, "data/os_distro", &os_info.os_type().to_string())?;
+        xs_publish(
+            &self.xs,
+            "data/os_distro",
+            &info.os_info.os_type().to_string(),
+        )?;
         xs_publish(
             &self.xs,
             "data/os_name",
-            &format!("{} {}", os_info.os_type(), os_info.version()),
+            &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
         )?;
         // FIXME .version only has "major" component right now; not a
         // big deal for a proto, os_minorver is known to be unreliable
         // in xe-guest-utilities at least for Debian
-        let os_version = os_info.version();
+        let os_version = info.os_info.version();
         match os_version {
             os_info::Version::Semantic(major, minor, _patch) => {
                 xs_publish(&self.xs, "data/os_majorver", &major.to_string())?;
@@ -79,12 +79,8 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
                 log::info!("cannot parse yet os version {:?}", os_version);
             }
         }
-        if let Some(kernel_info) = kernel_info {
+        if let Some(kernel_info) = &info.kernel_info {
             xs_publish(&self.xs, "data/os_uname", &kernel_info.release)?;
-        }
-
-        if let Some(mem_total_kb) = mem_total_kb {
-            xs_publish(&self.xs, "data/meminfo_total", &mem_total_kb.to_string())?;
         }
 
         if !self.forbidden_control_feature_balloon {
@@ -107,8 +103,18 @@ impl<XS: Xs> Publisher for XenstoreStd<XS> {
         Ok(())
     }
 
-    fn publish_memfree(&mut self, mem_free_kb: usize) -> io::Result<()> {
-        xs_publish(&self.xs, "data/meminfo_free", &mem_free_kb.to_string())?;
+    fn publish_memory(&mut self, mem_info: &MemoryInfo) -> io::Result<()> {
+        xs_publish(
+            &self.xs,
+            "data/meminfo_free",
+            &(mem_info.mem_free / 1024).to_string(),
+        )?;
+        xs_publish(
+            &self.xs,
+            "data/meminfo_total",
+            &(mem_info.mem_total / 1024).to_string(),
+        )?;
+
         Ok(())
     }
 

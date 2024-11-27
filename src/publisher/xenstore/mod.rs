@@ -14,3 +14,16 @@ pub fn xs_unpublish(xs: &impl Xs, key: &str) -> io::Result<()> {
     log::trace!("- {}", key);
     xs.rm(key)
 }
+
+pub trait XsBuild: Sized + Xs {
+    fn new() -> io::Result<Self>;
+}
+
+#[cfg(target_family = "unix")]
+impl XsBuild for xenstore_rs::unix::XsUnix {
+    fn new() -> io::Result<Self> {
+        Self::new()
+    }
+}
+
+pub type PlatformXs = xenstore_rs::unix::XsUnix;
