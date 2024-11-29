@@ -1,0 +1,11 @@
+[package]
+name = "guest-metrics"
+edition.workspace = true
+version.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+futures = "0.3"
+uuid = "1.11"
+os_info = "3"

@@ -1,0 +1,13 @@
+[package]
+name = "provider-os"
+edition = "2021"
+version.workspace = true
+repository.workspace = true
+categories.workspace = true
+
+[dependencies]
+guest-metrics = { path = "../../guest-metrics" }
+futures = "0.3"
+
+[target.'cfg(unix)'.dependencies]
+uname = "0.1.1"

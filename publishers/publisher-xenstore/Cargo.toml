@@ -1,0 +1,19 @@
+[package]
+name = "publisher-xenstore"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+guest-metrics = { path = "../../guest-metrics" }
+uuid = "1.11"
+futures = "0.3"
+log = "*"
+
+# Use "unix" feature on non-Windows.
+[target.'cfg(not(target_os = "windows"))'.dependencies]
+xenstore-rs = { git = "https://github.com/TSnake41/xenstore-rs.git", branch = "pure-rust" }
+
+# Use xenstore-win on Windows
+[target.'cfg(target_os = "windows")'.dependencies]
+xenstore-rs = { git = "https://github.com/TSnake41/xenstore-rs.git", branch = "pure-rust", default-features = false }
+xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git" }

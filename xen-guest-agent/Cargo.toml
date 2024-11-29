@@ -1,0 +1,33 @@
+[package]
+name = "xen-guest-agent"
+version = "0.5.0-dev"
+authors = ["Yann Dirson <yann.dirson@vates.fr>"]
+edition = "2018"
+rust-version = "1.76"
+license = "AGPL-3.0-only"
+
+[dependencies]
+futures = "0.3.26"
+tokio = { version = "1.25.0", features = ["rt", "macros", "rt-multi-thread"] }
+log = "0.4.0"
+env_logger = ">=0.10.0"
+clap = { version = "4.4.8", features = ["derive"] }
+enum_dispatch = "0.3"
+anyhow = "1.0"
+
+guest-metrics = { path = "../guest-metrics" }
+
+publisher-console = { path = "../publishers/publisher-console" }
+publisher-xenstore = { path = "../publishers/publisher-xenstore" }
+
+provider-memory = { path = "../providers/provider-memory" }
+provider-os = { path = "../providers/provider-os" }
+provider-simple = { path = "../providers/provider-simple" }
+
+[target.'cfg(target_os = "freebsd")'.dependencies]
+sysctl = "0.5.0"
+
+[target.'cfg(target_family = "unix")'.dependencies]
+syslog = "6.0"
+
+[features]
