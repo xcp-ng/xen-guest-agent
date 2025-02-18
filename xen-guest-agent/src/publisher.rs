@@ -1,8 +1,8 @@
 use std::io;
 
 use futures::channel::mpsc;
-use guest_metrics::{plugin::GuestAgentPublisher, GuestMetric};
 
+use guest_metrics::{plugin::GuestAgentPublisher, GuestMetric};
 use publisher_console::ConsolePublisher;
 use publisher_xenstore::{XenstoreRfcPublisher, XenstoreStdPublisher};
 

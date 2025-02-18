@@ -1,6 +1,7 @@
 use std::io;
 
 use futures::channel::mpsc;
+
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric};
 use provider_simple::SimpleNetworkPlugin;
 
