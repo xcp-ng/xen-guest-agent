@@ -19,9 +19,10 @@ impl GuestAgentPlugin for SimpleNetworkPlugin {
     ) -> impl std::future::Future<Output = ()> + Send {
         async move {
             let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
+            let vif_detector = PlatformVifDetector::default();
 
             loop {
-                self.track_interfaces(&mut channel).await;
+                self.track_interfaces(&vif_detector, &mut channel).await;
 
                 timer.tick().await;
             }
@@ -32,6 +33,7 @@ impl GuestAgentPlugin for SimpleNetworkPlugin {
 impl SimpleNetworkPlugin {
     async fn track_interfaces(
         &mut self,
+        vif_detector: &impl VifDetector,
         channel: &mut futures::channel::mpsc::Sender<GuestMetric>,
     ) {
         let interfaces = network_interface::NetworkInterface::show().unwrap();
@@ -71,7 +73,8 @@ impl SimpleNetworkPlugin {
                     uuid,
                     index: interface.index,
                     name: interface.name.clone(),
-                    toolstack_iface: PlatformVifDetector::get_toolstack_interface(&interface.name)
+                    toolstack_iface: vif_detector
+                        .get_toolstack_interface(&interface.name, interface.mac_addr.as_deref())
                         .unwrap_or_default(),
                 }))
                 .await

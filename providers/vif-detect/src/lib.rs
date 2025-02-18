@@ -6,7 +6,7 @@ pub mod freebsd;
 pub mod linux;
 
 pub trait VifDetector: Default {
-    fn get_toolstack_interface(iface_name: &str) -> Option<ToolstackNetInterface>;
+    fn get_toolstack_interface(&self, iface_name: &str, mac_addr: Option<&str>) -> Option<ToolstackNetInterface>;
 }
 
 #[cfg(target_os = "linux")]

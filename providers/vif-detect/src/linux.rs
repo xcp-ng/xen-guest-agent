@@ -13,7 +13,7 @@ use super::VifDetector;
 pub struct LinuxVifDetector;
 
 impl VifDetector for LinuxVifDetector {
-    fn get_toolstack_interface(iface_name: &str) -> Option<ToolstackNetInterface> {
+    fn get_toolstack_interface(&self, iface_name: &str, _mac_addr: Option<&str>) -> Option<ToolstackNetInterface> {
         // FIXME: using ETHTOOL ioctl could be better
         let device_path = format!("/sys/class/net/{iface_name}/device");
         let devtype = fs::read_to_string(format!("{device_path}/devtype"))
