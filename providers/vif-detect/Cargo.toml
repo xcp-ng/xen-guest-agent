@@ -6,3 +6,7 @@ edition = "2021"
 [dependencies]
 log = "*"
 guest-metrics = { path = "../../guest-metrics" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+xenstore-rs = "0.8"
+xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git" }

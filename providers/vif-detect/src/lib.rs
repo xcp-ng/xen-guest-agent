@@ -4,6 +4,8 @@ use guest_metrics::ToolstackNetInterface;
 pub mod freebsd;
 #[cfg(target_os = "linux")]
 pub mod linux;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
 pub trait VifDetector: Default {
     fn get_toolstack_interface(&self, iface_name: &str, mac_addr: Option<&str>) -> Option<ToolstackNetInterface>;
@@ -14,3 +16,6 @@ pub type PlatformVifDetector = linux::LinuxVifDetector;
 
 #[cfg(target_os = "freebsd")]
 pub type PlatformVifDetector = freebsd::FreebsdVifDetector;
+
+#[cfg(target_os = "windows")]
+pub type PlatformVifDetector = windows::WindowsVifDetector;
