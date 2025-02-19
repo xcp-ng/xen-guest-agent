@@ -13,16 +13,22 @@ use super::VifDetector;
 pub struct LinuxVifDetector;
 
 impl VifDetector for LinuxVifDetector {
-    fn get_toolstack_interface(&self, iface_name: &str, _mac_addr: Option<&str>) -> Option<ToolstackNetInterface> {
+    fn get_toolstack_interface(
+        &self,
+        iface_name: &str,
+        _mac_addr: Option<&str>,
+    ) -> Option<ToolstackNetInterface> {
         // FIXME: using ETHTOOL ioctl could be better
         let device_path = format!("/sys/class/net/{iface_name}/device");
-        let devtype = fs::read_to_string(format!("{device_path}/devtype"))
+        let Some(devtype) = fs::read_to_string(format!("{device_path}/devtype"))
             .inspect_err(|e| log::debug!("reading {device_path}/devtype: {e}"))
-            .ok()?;
+            .ok()
+        else {
+            return Some(ToolstackNetInterface::Unknown);
+        };
 
         let "vif" = devtype.trim() else {
-            log::debug!("ignoring device {device_path}, devtype {devtype:?} not 'vif'");
-            return None;
+            return Some(ToolstackNetInterface::Unknown);
         };
 
         let nodename = fs::read_to_string(format!("{device_path}/nodename"))
