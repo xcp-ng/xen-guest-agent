@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use futures::{channel::mpsc, StreamExt};
 use guest_metrics::{
     plugin::GuestAgentPublisher, GuestMetric, KernelInfo, NetEventOp, NetInterface,
+    ToolstackNetInterface,
 };
 use uuid::Uuid;
 
@@ -32,7 +33,12 @@ impl ConsolePublisher {
                 );
             }
             GuestMetric::AddIface(iface) => {
-                println!("{} +IFACE", iface.index);
+                let ifkind = match iface.toolstack_iface {
+                    ToolstackNetInterface::Unknown => String::from("unknown"),
+                    ToolstackNetInterface::Vif(id) => format!("vif/{id}"),
+                    _ => todo!(),
+                };
+                println!("{} +IFACE ({})", iface.index, ifkind);
                 self.ifaces.insert(iface.uuid, iface);
             }
             GuestMetric::RmIface(iface_id) => {
