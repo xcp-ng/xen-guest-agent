@@ -1,109 +1,35 @@
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::ready;
-use futures::stream::{Stream, StreamExt};
+use std::{collections::HashMap, io};
+
+use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric, NetEvent, NetEventOp, NetInterface};
+use vif_detect::VifDetector;
+
+use futures::{
+    channel::mpsc::{self, UnboundedReceiver},
+    SinkExt, StreamExt,
+};
+use uuid::Uuid;
+
 use netlink_packet_core::{
     NetlinkHeader, NetlinkMessage, NetlinkPayload, NLM_F_DUMP, NLM_F_REQUEST,
 };
 use netlink_packet_route::{
-    address, address::AddressMessage, link, link::LinkMessage, RouteNetlinkMessage,
+    address::{AddressAttribute, AddressMessage},
+    link::{LinkAttribute, LinkMessage},
+    RouteNetlinkMessage,
 };
 use netlink_proto::{
-    self, new_connection,
+    new_connection,
     sys::{protocols::NETLINK_ROUTE, AsyncSocket, SocketAddr},
 };
 use rtnetlink::constants::{RTMGRP_IPV4_IFADDR, RTMGRP_IPV6_IFADDR, RTMGRP_LINK};
-use std::collections::hash_map;
-use std::io;
-use std::net::IpAddr;
-use std::pin::Pin;
-use std::sync::{Arc, Mutex};
-use std::task::{Context, Poll};
-use std::vec::Vec;
 
-pub struct NetlinkNetworkSource {
+struct NetlinkConnection {
     handle: netlink_proto::ConnectionHandle<RouteNetlinkMessage>,
     messages: UnboundedReceiver<(NetlinkMessage<RouteNetlinkMessage>, SocketAddr)>,
-    iface_cache: HashMap<>,
 }
 
-impl NetlinkNetworkSource {
-    async fn collect_current(&mut self) -> anyhow::Result<Vec<NetEvent>> {
-        let mut events = Vec::<NetEvent>::new();
-
-        // Create the netlink message that requests the links to be dumped
-        let mut nl_hdr = NetlinkHeader::default();
-        nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
-        let nl_msg = NetlinkMessage::new(
-            nl_hdr,
-            RouteNetlinkMessage::GetLink(LinkMessage::default()).into(),
-        );
-        // Send the request
-        let mut nl_response = self.handle.request(nl_msg, SocketAddr::new(0, 0))?;
-        // Handle response
-        while let Some(packet) = nl_response.next().await {
-            if let NetlinkMessage {
-                payload: NetlinkPayload::InnerMessage(msg),
-                ..
-            } = packet
-            {
-                events.extend(self.netevent_from_rtnetlink(&msg)?);
-            }
-        }
-
-        // Create the netlink message that requests the addresses to be dumped
-        let mut nl_hdr = NetlinkHeader::default();
-        nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
-        let nl_msg = NetlinkMessage::new(
-            nl_hdr,
-            RouteNetlinkMessage::GetAddress(AddressMessage::default()).into(),
-        );
-        // Send the request
-        let mut nl_response = self.handle.request(nl_msg, SocketAddr::new(0, 0))?;
-        // Handle response
-        while let Some(packet) = nl_response.next().await {
-            if let NetlinkMessage {
-                payload: NetlinkPayload::InnerMessage(msg),
-                ..
-            } = packet
-            {
-                events.extend(self.netevent_from_rtnetlink(&msg)?);
-            }
-        }
-
-        Ok(events)
-    }
-}
-
-impl Stream for NetlinkNetworkSource {
-    type Item = Vec<NetEvent>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        loop {
-            let Some((message, _)) = ready!(self.messages.poll_next_unpin(cx)) else {
-                log::info!("No more netlink message");
-                return Poll::Ready(None);
-            };
-
-            if let NetlinkMessage {
-                payload: NetlinkPayload::InnerMessage(msg),
-                ..
-            } = message
-            {
-                let Ok(events) = self
-                    .netevent_from_rtnetlink(&msg)
-                    .inspect_err(|e| log::error!("Unable to fetch netlink messages ({e})"))
-                else {
-                    return Poll::Ready(None);
-                };
-
-                return Poll::Ready(Some(events));
-            }
-        }
-    }
-}
-
-impl NetlinkNetworkSource {
-    pub fn new() -> io::Result<Self> {
+impl NetlinkConnection {
+    fn new() -> io::Result<Self> {
         let (mut connection, handle, messages) = new_connection(NETLINK_ROUTE)?;
         // What kinds of broadcast messages we want to listen for.
         let nl_mgroup_flags = RTMGRP_LINK | RTMGRP_IPV4_IFADDR | RTMGRP_IPV6_IFADDR;
@@ -112,159 +38,195 @@ impl NetlinkNetworkSource {
             .socket_mut()
             .socket_mut()
             .bind(&nl_addr)
-            .expect("failed to bind");
+            .expect("failed to bind to netlink");
+
         tokio::spawn(connection);
-        Ok(NetlinkNetworkSource {
-            handle,
-            messages,
-            iface_cache: Default::default(),
-        })
+        Ok(Self { handle, messages })
     }
+}
 
-    fn netevent_from_rtnetlink(
-        &mut self,
-        nl_msg: &RouteNetlinkMessage,
-    ) -> io::Result<Vec<NetEvent>> {
-        let mut events = Vec::<NetEvent>::new();
-        match nl_msg {
-            RouteNetlinkMessage::NewLink(link_msg) => {
-                let (iface, mac_address) = self.nl_linkmessage_decode(link_msg)?;
-                log::debug!("NewLink({iface:?} {mac_address:?})");
-                events.push(NetEvent {
-                    iface: iface.clone(),
-                    op: NetEventOp::AddIface,
-                });
-                if let Some(mac_address) = mac_address {
-                    events.push(NetEvent {
-                        iface,
-                        op: NetEventOp::AddMac(mac_address),
-                    });
+#[derive(Default)]
+pub struct NetlinkPlugin;
+
+impl GuestAgentPlugin for NetlinkPlugin {
+    fn run(
+        self,
+        mut channel: mpsc::Sender<GuestMetric>,
+    ) -> impl std::future::Future<Output = ()> + Send {
+        async move {
+            let connection = NetlinkConnection::new().unwrap();
+            let vif_identify = vif_detect::PlatformVifDetector::default();
+            let mut interfaces = HashMap::new();
+
+            // Create the netlink message that requests the links to be dumped
+            let mut nl_hdr = NetlinkHeader::default();
+            nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
+            // Send the request
+            let link_stream = connection
+                .handle
+                .request(
+                    NetlinkMessage::new(
+                        nl_hdr,
+                        RouteNetlinkMessage::GetLink(LinkMessage::default()).into(),
+                    ),
+                    SocketAddr::new(0, 0),
+                )
+                .unwrap();
+
+            // Create the netlink message that requests the addresses to be dumped
+            let mut nl_hdr = NetlinkHeader::default();
+            nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
+            // Send the request
+            let address_stream = connection
+                .handle
+                .request(
+                    NetlinkMessage::new(
+                        nl_hdr,
+                        RouteNetlinkMessage::GetAddress(AddressMessage::default()).into(),
+                    ),
+                    SocketAddr::new(0, 0),
+                )
+                .unwrap();
+
+            let mut stream = link_stream
+                .chain(address_stream)
+                .chain(connection.messages.map(|(msg, _)| msg));
+
+            while let Some(msg) = stream.next().await {
+                if let NetlinkPayload::InnerMessage(inner_msg) = msg.payload {
+                    if let Err(e) =
+                        process_message(inner_msg, &mut channel, &vif_identify, &mut interfaces)
+                            .await
+                    {
+                        log::error!("Unable to process netlink message: {e}");
+                    }
                 }
-            }
-            RouteNetlinkMessage::DelLink(link_msg) => {
-                let (iface, mac_address) = self.nl_linkmessage_decode(link_msg)?;
-                log::debug!("DelLink({iface:?} {mac_address:?})");
-                if let Some(mac_address) = mac_address {
-                    events.push(NetEvent {
-                        iface: iface.clone(),
-                        op: NetEventOp::RmMac(mac_address),
-                    }); // redundant
-                }
-                events.push(NetEvent {
-                    iface,
-                    op: NetEventOp::RmIface,
-                });
-            }
-            RouteNetlinkMessage::NewAddress(address_msg) => {
-                // FIXME does not distinguish when IP is on DOWN iface
-                let (iface, address) = self.nl_addressmessage_decode(address_msg)?;
-                log::debug!("NewAddress({iface:?} {address})");
-                events.push(NetEvent {
-                    iface,
-                    op: NetEventOp::AddIp(address),
-                });
-            }
-            RouteNetlinkMessage::DelAddress(address_msg) => {
-                let (iface, address) = self.nl_addressmessage_decode(address_msg)?;
-                log::debug!("DelAddress({iface:?} {address})");
-                events.push(NetEvent {
-                    iface,
-                    op: NetEventOp::RmIp(address),
-                });
-            }
-            _ => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("unhandled RouteNetlinkMessage: {nl_msg:?}"),
-                ));
-            }
-        };
-        Ok(events)
-    }
-
-    fn nl_linkmessage_decode(
-        &mut self,
-        msg: &LinkMessage,
-    ) -> io::Result<(
-        Arc<Mutex<NetInterface>>, // ref to the (possibly new) impacted interface
-        Option<String>,           // MAC address
-    )> {
-        let LinkMessage {
-            header, attributes, ..
-        } = msg;
-
-        // extract fields of interest
-        let mut iface_name: Option<String> = None;
-        let mut address_bytes: Option<&Vec<u8>> = None;
-        for nla in attributes {
-            if let link::LinkAttribute::IfName(name) = nla {
-                iface_name = Some(name.to_string());
-            }
-            if let link::LinkAttribute::Address(addr) = nla {
-                address_bytes = Some(addr);
             }
         }
-        // make sure message contains an address
-        let mac_address = address_bytes.map(|address_bytes| {
-            address_bytes
+    }
+}
+
+async fn process_message(
+    inner_msg: RouteNetlinkMessage,
+    channel: &mut mpsc::Sender<GuestMetric>,
+    vif_identify: &impl VifDetector,
+    interfaces: &mut HashMap<u32, Uuid>,
+) -> anyhow::Result<()> {
+    match inner_msg {
+        RouteNetlinkMessage::NewLink(link_message) | RouteNetlinkMessage::GetLink(link_message) => {
+            let Some(ifname) =
+                link_message
+                    .attributes
+                    .iter()
+                    .find_map(|attribute| match attribute {
+                        LinkAttribute::IfName(n) => Some(n),
+                        _ => None,
+                    })
+            else {
+                log::warn!("Ignoring NewLink/GetLink message without ifname");
+                return Ok(());
+            };
+
+            let mac = link_message
+                .attributes
                 .iter()
-                .map(|b| format!("{b:02x}"))
-                .collect::<Vec<String>>()
-                .join(":")
-        });
+                .find_map(|attribute| match attribute {
+                    LinkAttribute::Address(addr) => Some(
+                        addr.iter()
+                            .map(|b| format!("{b:02x}"))
+                            .collect::<Vec<String>>()
+                            .join(":"),
+                    ),
+                    _ => None,
+                });
 
-        let iface = self
-            .iface_cache
-            .entry(header.index)
-            .or_insert_with_key(|index| {
-                Mutex::new(NetInterface::new(*index, iface_name.clone())).into()
-            });
+            let Some(toolstack_iface) =
+                vif_identify.get_toolstack_interface(&ifname, mac.as_deref())
+            else {
+                log::debug!("Unknown interface {ifname} (mac: {mac:?})");
+                return Ok(());
+            };
 
-        // handle renaming
-        if let Some(iface_name) = iface_name {
-            let iface_renamed = iface.lock().unwrap().name != iface_name;
-            if iface_renamed {
-                log::trace!("name change: {iface:?} now named '{iface_name}'");
-                iface.lock().unwrap().name = iface_name;
-            }
-        };
+            let uuid = Uuid::new_v4();
 
-        Ok((iface.clone(), mac_address))
+            interfaces.insert(link_message.header.index, uuid);
+            channel
+                .send(GuestMetric::AddIface(NetInterface {
+                    uuid,
+                    index: link_message.header.index,
+                    name: ifname.clone(),
+                    toolstack_iface,
+                }))
+                .await?;
+        }
+        RouteNetlinkMessage::DelLink(link_message) => {
+            let Some(&uuid) = interfaces.get(&link_message.header.index) else {
+                return Ok(());
+            };
+
+            channel.send(GuestMetric::RmIface(uuid)).await.ok();
+        }
+        RouteNetlinkMessage::NewAddress(address_message)
+        | RouteNetlinkMessage::GetAddress(address_message) => {
+            let Some(&iface_id) = interfaces.get(&address_message.header.index) else {
+                log::warn!(
+                    "Ignoring NewAddress/GetAddress on unknown interface with index={}",
+                    address_message.header.index
+                );
+                return Ok(());
+            };
+
+            let Some(&addr) =
+                address_message
+                    .attributes
+                    .iter()
+                    .find_map(|attribute| match attribute {
+                        AddressAttribute::Address(addr) => Some(addr),
+                        _ => None,
+                    })
+            else {
+                log::debug!("Got NewAddress/GetAddress without IP.");
+                return Ok(());
+            };
+
+            channel
+                .send(GuestMetric::Network(NetEvent {
+                    iface_id,
+                    op: NetEventOp::AddIp(addr),
+                }))
+                .await?;
+        }
+        RouteNetlinkMessage::DelAddress(address_message) => {
+            let Some(&iface_id) = interfaces.get(&address_message.header.index) else {
+                log::warn!(
+                    "Ignoring DelAddress on unknown interface with index={}",
+                    address_message.header.index
+                );
+                return Ok(());
+            };
+
+            let Some(&addr) =
+                address_message
+                    .attributes
+                    .iter()
+                    .find_map(|attribute| match attribute {
+                        AddressAttribute::Address(addr) => Some(addr),
+                        _ => None,
+                    })
+            else {
+                log::debug!("Got DelAddress without IP.");
+                return Ok(());
+            };
+
+            channel
+                .send(GuestMetric::Network(NetEvent {
+                    iface_id,
+                    op: NetEventOp::RmIp(addr),
+                }))
+                .await?;
+        }
+        _ => {}
     }
 
-    fn nl_addressmessage_decode(
-        &mut self,
-        msg: &AddressMessage,
-    ) -> io::Result<(Arc<Mutex<NetInterface>>, IpAddr)> {
-        let AddressMessage {
-            header, attributes, ..
-        } = msg;
-
-        // extract fields of interest
-        let mut address: Option<&IpAddr> = None;
-        for nla in attributes {
-            if let address::AddressAttribute::Address(addr) = nla {
-                address = Some(addr);
-                break;
-            }
-        }
-
-        let iface = match self.iface_cache.entry(header.index) {
-            hash_map::Entry::Occupied(entry) => entry.get().clone(),
-            hash_map::Entry::Vacant(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    format!("unknown interface for index {}", header.index),
-                ));
-            }
-        };
-
-        match address {
-            Some(address) => Ok((iface.clone(), *address)),
-            None => Err(io::Error::new(
-                io::ErrorKind::InvalidData,
-                "unknown address",
-            )),
-        }
-    }
+    Ok(())
 }

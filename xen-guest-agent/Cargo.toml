@@ -23,6 +23,7 @@ publisher-xenstore = { path = "../publishers/publisher-xenstore" }
 provider-memory = { path = "../providers/provider-memory" }
 provider-os = { path = "../providers/provider-os" }
 provider-simple = { path = "../providers/provider-simple" }
+provider-netlink = { path = "../providers/provider-netlink", optional = true }
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
 sysctl = "0.5.0"
@@ -31,3 +32,4 @@ sysctl = "0.5.0"
 syslog = "6.0"
 
 [features]
+netlink = ["dep:provider-netlink"]
