@@ -31,7 +31,7 @@ default-features = false
 
 [target.'cfg(unix)'.dependencies]
 uname = "0.1.1"
-syslog = "6.0"
+syslog = "7.0"
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
 sysctl = "0.5.0"
