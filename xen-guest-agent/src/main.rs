@@ -1,5 +1,9 @@
 mod plugins;
 mod publisher;
+#[cfg(windows)]
+mod windows_debug_logger;
+#[cfg(windows)]
+mod windows_service_main;
 
 use clap::Parser;
 use futures::{channel::mpsc, SinkExt};
@@ -9,6 +13,9 @@ use tokio::task::JoinSet;
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric};
 use plugins::{NetworkPlugin, NetworkPluginKind};
 use publisher::{AgentPublisher, PublisherKind};
+
+#[cfg(windows)]
+use windows_debug_logger::WindowsDebugLogger;
 
 const MEM_PERIOD_SECONDS: f64 = 5.0;
 
@@ -35,12 +42,14 @@ struct GuestAgentConfig {
 
     #[arg(long, value_enum, default_value_t = Default::default())]
     network: NetworkPluginKind,
+
+    /// Run as a Windows service.
+    #[cfg(windows)]
+    #[arg(long)]
+    service: bool,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let config = GuestAgentConfig::parse();
-
+pub(crate) async fn run_async(config: &GuestAgentConfig) -> anyhow::Result<JoinSet<()>> {
     setup_logger(config.stderr, config.log_level)?;
 
     let mut set: JoinSet<()> = JoinSet::new();
@@ -58,18 +67,40 @@ async fn main() -> anyhow::Result<()> {
     set.spawn(provider_memory::MemoryPlugin.run(tx.clone()));
     set.spawn(NetworkPlugin::new(config.network)?.run(tx.clone()));
 
-    println!("{:?}", set.join_all().await);
+    Ok(set)
+}
+
+#[cfg(unix)]
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let config = GuestAgentConfig::parse();
+    let set = run_async(&config).await?;
+    set.join_all().await;
     Ok(())
+}
+
+#[cfg(windows)]
+fn main() -> anyhow::Result<()> {
+    let config = GuestAgentConfig::parse();
+    if config.service {
+        windows_service_main::dispatch_main()
+    } else {
+        let builder = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()?;
+        builder.block_on(async {
+            let set = run_async(&config).await?;
+            set.join_all().await;
+            anyhow::Result::<()>::Ok(())
+        })
+    }
 }
 
 fn setup_logger(use_stderr: bool, level: LevelFilter) -> anyhow::Result<()> {
     if use_stderr {
         setup_env_logger(level)?;
     } else {
-        #[cfg(not(unix))]
-        panic!("no system logger supported");
-
-        #[cfg(unix)]
         setup_system_logger(level)?;
     }
     Ok(())
@@ -101,6 +132,13 @@ fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
         Ok(logger) => logger,
     };
     log::set_boxed_logger(Box::new(syslog::BasicLogger::new(logger)))?;
+    log::set_max_level(level);
+    Ok(())
+}
+
+#[cfg(windows)]
+fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
+    log::set_boxed_logger(Box::new(WindowsDebugLogger {}))?;
     log::set_max_level(level);
     Ok(())
 }
