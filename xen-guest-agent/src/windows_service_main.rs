@@ -1,6 +1,3 @@
-extern crate windows;
-extern crate windows_service;
-
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -18,7 +15,7 @@ use crate::{run_async, GuestAgentConfig};
 const SERVICE_NAME: &str = "xenguestagent-rs";
 
 fn service_main() -> anyhow::Result<()> {
-    let (stop_tx, stop_rx) = mpsc::channel::<()>();
+    let (stop_tx, stop_rx) = mpsc::channel();
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
@@ -34,18 +31,16 @@ fn service_main() -> anyhow::Result<()> {
 
     let status_handle = service_control_handler::register(SERVICE_NAME, event_handler)?;
 
-    {
-        let status = ServiceStatus {
-            service_type: ServiceType::OWN_PROCESS,
-            current_state: ServiceState::Running,
-            controls_accepted: ServiceControlAccept::STOP,
-            exit_code: ServiceExitCode::Win32(ERROR_SUCCESS.0),
-            checkpoint: 0,
-            wait_hint: Duration::default(),
-            process_id: None,
-        };
-        status_handle.set_service_status(status)?;
-    }
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Running,
+        controls_accepted: ServiceControlAccept::STOP,
+        exit_code: ServiceExitCode::Win32(ERROR_SUCCESS.0),
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
+
     log::info!("Service starting");
 
     let builder = tokio::runtime::Builder::new_multi_thread()
@@ -66,22 +61,19 @@ fn service_main() -> anyhow::Result<()> {
         Err(ref e) => log::error!("Service returned error {e}"),
     }
 
-    {
-        let status = ServiceStatus {
-            service_type: ServiceType::OWN_PROCESS,
-            current_state: ServiceState::Stopped,
-            controls_accepted: ServiceControlAccept::empty(),
-            exit_code: if service_result.is_ok() {
-                ServiceExitCode::Win32(ERROR_SUCCESS.0)
-            } else {
-                ServiceExitCode::Win32(ERROR_INVALID_PARAMETER.0)
-            },
-            checkpoint: 0,
-            wait_hint: Duration::default(),
-            process_id: None,
-        };
-        status_handle.set_service_status(status)?;
-    }
+    status_handle.set_service_status(ServiceStatus {
+        service_type: ServiceType::OWN_PROCESS,
+        current_state: ServiceState::Stopped,
+        controls_accepted: ServiceControlAccept::empty(),
+        exit_code: if service_result.is_ok() {
+            ServiceExitCode::Win32(ERROR_SUCCESS.0)
+        } else {
+            ServiceExitCode::Win32(ERROR_INVALID_PARAMETER.0)
+        },
+        checkpoint: 0,
+        wait_hint: Duration::default(),
+        process_id: None,
+    })?;
 
     Ok(())
 }
@@ -90,9 +82,8 @@ extern "system" fn ffi_service_main(
     _num_service_arguments: u32,
     _service_arguments: *mut *mut u16,
 ) {
-    match service_main() {
-        Ok(_) => (),
-        Err(ref e) => log::error!("Service start encountered an error {e}"),
+    if let Err(e) = service_main() {
+        log::error!("Service start encountered an error {e}");
     }
 }
 
