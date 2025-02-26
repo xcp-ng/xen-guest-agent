@@ -59,13 +59,15 @@ pub(crate) async fn run_async(config: &GuestAgentConfig) -> anyhow::Result<JoinS
 
     set.spawn(publisher.run(rx));
 
-    // Remove old entries from previous agent to avoid having unknown
-    // interfaces. We will repopulate existing ones immediatly.
-    tx.send(GuestMetric::CleanupIfaces).await?;
+    if config.report_nics {
+        // Remove old entries from previous agent to avoid having unknown
+        // interfaces. We will repopulate existing ones immediatly.
+        tx.send(GuestMetric::CleanupIfaces).await?;
+        set.spawn(NetworkPlugin::new(config.network)?.run(tx.clone()));
+    }
 
     set.spawn(provider_os::OsInfoPlugin.run(tx.clone()));
     set.spawn(provider_memory::MemoryPlugin.run(tx.clone()));
-    set.spawn(NetworkPlugin::new(config.network)?.run(tx.clone()));
 
     Ok(set)
 }
