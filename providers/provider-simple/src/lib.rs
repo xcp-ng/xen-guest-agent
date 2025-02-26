@@ -13,19 +13,17 @@ pub struct SimpleNetworkPlugin {
 }
 
 impl GuestAgentPlugin for SimpleNetworkPlugin {
-    fn run(
+    async fn run(
         mut self,
         mut channel: futures::channel::mpsc::Sender<guest_metrics::GuestMetric>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
-            let vif_detector = PlatformVifDetector::default();
+    ) {
+        let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
+        let vif_detector = PlatformVifDetector::default();
 
-            loop {
-                self.track_interfaces(&vif_detector, &mut channel).await;
+        loop {
+            self.track_interfaces(&vif_detector, &mut channel).await;
 
-                timer.tick().await;
-            }
+            timer.tick().await;
         }
     }
 }

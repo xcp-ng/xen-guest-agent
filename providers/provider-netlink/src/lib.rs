@@ -49,57 +49,51 @@ impl NetlinkConnection {
 pub struct NetlinkPlugin;
 
 impl GuestAgentPlugin for NetlinkPlugin {
-    fn run(
-        self,
-        mut channel: mpsc::Sender<GuestMetric>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            let connection = NetlinkConnection::new().unwrap();
-            let vif_identify = vif_detect::PlatformVifDetector::default();
-            let mut interfaces = HashMap::new();
+    async fn run(self, mut channel: mpsc::Sender<GuestMetric>) {
+        let connection = NetlinkConnection::new().unwrap();
+        let vif_identify = vif_detect::PlatformVifDetector::default();
+        let mut interfaces = HashMap::new();
 
-            // Create the netlink message that requests the links to be dumped
-            let mut nl_hdr = NetlinkHeader::default();
-            nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
-            // Send the request
-            let link_stream = connection
-                .handle
-                .request(
-                    NetlinkMessage::new(
-                        nl_hdr,
-                        RouteNetlinkMessage::GetLink(LinkMessage::default()).into(),
-                    ),
-                    SocketAddr::new(0, 0),
-                )
-                .unwrap();
+        // Create the netlink message that requests the links to be dumped
+        let mut nl_hdr = NetlinkHeader::default();
+        nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
+        // Send the request
+        let link_stream = connection
+            .handle
+            .request(
+                NetlinkMessage::new(
+                    nl_hdr,
+                    RouteNetlinkMessage::GetLink(LinkMessage::default()).into(),
+                ),
+                SocketAddr::new(0, 0),
+            )
+            .unwrap();
 
-            // Create the netlink message that requests the addresses to be dumped
-            let mut nl_hdr = NetlinkHeader::default();
-            nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
-            // Send the request
-            let address_stream = connection
-                .handle
-                .request(
-                    NetlinkMessage::new(
-                        nl_hdr,
-                        RouteNetlinkMessage::GetAddress(AddressMessage::default()).into(),
-                    ),
-                    SocketAddr::new(0, 0),
-                )
-                .unwrap();
+        // Create the netlink message that requests the addresses to be dumped
+        let mut nl_hdr = NetlinkHeader::default();
+        nl_hdr.flags = NLM_F_DUMP | NLM_F_REQUEST;
+        // Send the request
+        let address_stream = connection
+            .handle
+            .request(
+                NetlinkMessage::new(
+                    nl_hdr,
+                    RouteNetlinkMessage::GetAddress(AddressMessage::default()).into(),
+                ),
+                SocketAddr::new(0, 0),
+            )
+            .unwrap();
 
-            let mut stream = link_stream
-                .chain(address_stream)
-                .chain(connection.messages.map(|(msg, _)| msg));
+        let mut stream = link_stream
+            .chain(address_stream)
+            .chain(connection.messages.map(|(msg, _)| msg));
 
-            while let Some(msg) = stream.next().await {
-                if let NetlinkPayload::InnerMessage(inner_msg) = msg.payload {
-                    if let Err(e) =
-                        process_message(inner_msg, &mut channel, &vif_identify, &mut interfaces)
-                            .await
-                    {
-                        log::error!("Unable to process netlink message: {e}");
-                    }
+        while let Some(msg) = stream.next().await {
+            if let NetlinkPayload::InnerMessage(inner_msg) = msg.payload {
+                if let Err(e) =
+                    process_message(inner_msg, &mut channel, &vif_identify, &mut interfaces).await
+                {
+                    log::error!("Unable to process netlink message: {e}");
                 }
             }
         }
@@ -141,7 +135,7 @@ async fn process_message(
                 });
 
             let Some(toolstack_iface) =
-                vif_identify.get_toolstack_interface(&ifname, mac.as_deref())
+                vif_identify.get_toolstack_interface(ifname, mac.as_deref())
             else {
                 log::debug!("Unknown interface {ifname} (mac: {mac:?})");
                 return Ok(());

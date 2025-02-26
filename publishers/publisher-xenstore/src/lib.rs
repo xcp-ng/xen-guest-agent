@@ -20,43 +20,33 @@ pub fn xs_unpublish(xs: &impl Xs, key: &str) -> io::Result<()> {
 pub struct XenstoreRfcPublisher;
 
 impl GuestAgentPublisher for XenstoreRfcPublisher {
-    fn run(
-        self,
-        channel: mpsc::Receiver<guest_metrics::GuestMetric>,
-    ) -> impl ::std::future::Future<Output = ()> + Send {
-        async move {
-            #[cfg(not(target_os = "windows"))]
-            let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
+    async fn run(self, channel: mpsc::Receiver<guest_metrics::GuestMetric>) {
+        #[cfg(not(target_os = "windows"))]
+        let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
 
-            #[cfg(target_os = "windows")]
-            let xs = xenstore_win::XsWindows::new().expect("Unable to initialize xenstore");
+        #[cfg(target_os = "windows")]
+        let xs = xenstore_win::XsWindows::new().expect("Unable to initialize xenstore");
 
-            rfc::XenstoreRfc::new(xs)
-                .run(channel)
-                .await
-                .expect("Xenstore failure")
-        }
+        rfc::XenstoreRfc::new(xs)
+            .run(channel)
+            .await
+            .expect("Xenstore failure")
     }
 }
 
 pub struct XenstoreStdPublisher;
 
 impl GuestAgentPublisher for XenstoreStdPublisher {
-    fn run(
-        self,
-        channel: mpsc::Receiver<guest_metrics::GuestMetric>,
-    ) -> impl ::std::future::Future<Output = ()> + Send {
-        async move {
-            #[cfg(not(target_os = "windows"))]
-            let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
+    async fn run(self, channel: mpsc::Receiver<guest_metrics::GuestMetric>) {
+        #[cfg(not(target_os = "windows"))]
+        let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
 
-            #[cfg(target_os = "windows")]
-            let xs = xenstore_win::XsWindows::new().expect("Unable to initialize xenstore");
+        #[cfg(target_os = "windows")]
+        let xs = xenstore_win::XsWindows::new().expect("Unable to initialize xenstore");
 
-            std::XenstoreStd::new(xs)
-                .run(channel)
-                .await
-                .expect("Xenstore failure")
-        }
+        std::XenstoreStd::new(xs)
+            .run(channel)
+            .await
+            .expect("Xenstore failure")
     }
 }

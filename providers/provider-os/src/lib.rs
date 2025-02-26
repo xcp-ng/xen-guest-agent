@@ -20,20 +20,15 @@ pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
 pub struct OsInfoPlugin;
 
 impl GuestAgentPlugin for OsInfoPlugin {
-    fn run(
-        self,
-        mut channel: mpsc::Sender<guest_metrics::GuestMetric>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            let kernel_info = collect_kernel().expect("Unable to fetch kernel information");
+    async fn run(self, mut channel: mpsc::Sender<guest_metrics::GuestMetric>) {
+        let kernel_info = collect_kernel().expect("Unable to fetch kernel information");
 
-            channel
-                .send(GuestMetric::OperatingSystem(OsInfo {
-                    os_info: os_info::get(),
-                    kernel_info,
-                }))
-                .await
-                .ok();
-        }
+        channel
+            .send(GuestMetric::OperatingSystem(OsInfo {
+                os_info: os_info::get(),
+                kernel_info,
+            }))
+            .await
+            .ok();
     }
 }

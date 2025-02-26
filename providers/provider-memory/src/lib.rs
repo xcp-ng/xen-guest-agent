@@ -30,28 +30,23 @@ pub type PlatformMemorySource = windows::WindowsMemorySource;
 pub struct MemoryPlugin;
 
 impl GuestAgentPlugin for MemoryPlugin {
-    fn run(
-        self,
-        mut channel: mpsc::Sender<guest_metrics::GuestMetric>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
-            let mut memory_source =
-                PlatformMemorySource::new().expect("Unable to get memory information");
+    async fn run(self, mut channel: mpsc::Sender<guest_metrics::GuestMetric>) {
+        let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
+        let mut memory_source =
+            PlatformMemorySource::new().expect("Unable to get memory information");
 
-            loop {
-                timer.tick().await;
+        loop {
+            timer.tick().await;
 
-                if channel
-                    .send(guest_metrics::GuestMetric::Memory(MemoryInfo {
-                        mem_free: memory_source.get_available_kb().unwrap(),
-                        mem_total: memory_source.get_total_kb().unwrap(),
-                    }))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
+            if channel
+                .send(guest_metrics::GuestMetric::Memory(MemoryInfo {
+                    mem_free: memory_source.get_available_kb().unwrap(),
+                    mem_total: memory_source.get_total_kb().unwrap(),
+                }))
+                .await
+                .is_err()
+            {
+                break;
             }
         }
     }

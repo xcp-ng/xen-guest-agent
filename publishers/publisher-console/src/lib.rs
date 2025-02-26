@@ -70,14 +70,9 @@ impl ConsolePublisher {
 }
 
 impl GuestAgentPublisher for ConsolePublisher {
-    fn run(
-        mut self,
-        mut channel: mpsc::Receiver<GuestMetric>,
-    ) -> impl std::future::Future<Output = ()> + Send {
-        async move {
-            while let Some(msg) = channel.next().await {
-                self.process_message(msg)
-            }
+    async fn run(mut self, mut channel: mpsc::Receiver<GuestMetric>) {
+        while let Some(msg) = channel.next().await {
+            self.process_message(msg)
         }
     }
 }
