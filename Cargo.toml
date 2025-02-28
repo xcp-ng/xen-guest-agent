@@ -3,6 +3,7 @@ package.version = "0.6.0-dev"
 package.repository = "https://gitlab.com/xen-project/xen-guest-agent"
 package.categories = ["virtualization"]
 package.edition = "2021"
+resolver = "2"
 
 members = [
   "xen-guest-agent",
