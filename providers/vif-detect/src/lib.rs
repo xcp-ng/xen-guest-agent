@@ -8,7 +8,11 @@ pub mod linux;
 pub mod windows;
 
 pub trait VifDetector: Default {
-    fn get_toolstack_interface(&self, iface_name: &str, mac_addr: Option<&str>) -> Option<ToolstackNetInterface>;
+    fn get_toolstack_interface(
+        &self,
+        iface_name: &str,
+        mac_addr: Option<&str>,
+    ) -> Option<ToolstackNetInterface>;
 }
 
 #[cfg(target_os = "linux")]

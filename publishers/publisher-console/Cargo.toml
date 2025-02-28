@@ -8,4 +8,4 @@ categories.workspace = true
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
 uuid = "1.11"
-futures = "0.3"
+flume = "0.11.1"

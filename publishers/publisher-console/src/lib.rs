@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use futures::{channel::mpsc, StreamExt};
 use guest_metrics::{
     plugin::GuestAgentPublisher, GuestMetric, KernelInfo, NetEventOp, NetInterface,
     ToolstackNetInterface,
@@ -70,8 +69,8 @@ impl ConsolePublisher {
 }
 
 impl GuestAgentPublisher for ConsolePublisher {
-    async fn run(mut self, mut channel: mpsc::Receiver<GuestMetric>) {
-        while let Some(msg) = channel.next().await {
+    async fn run(mut self, channel: flume::Receiver<GuestMetric>) {
+        while let Ok(msg) = channel.recv_async().await {
             self.process_message(msg)
         }
     }

@@ -1,4 +1,3 @@
-use futures::{channel::mpsc, StreamExt};
 use guest_metrics::{
     GuestMetric, MemoryInfo, NetEvent, NetEventOp, NetInterface, OsInfo, ToolstackNetInterface,
 };
@@ -99,8 +98,8 @@ impl<XS: Xs + 'static> XenstoreRfc<XS> {
         Ok(())
     }
 
-    pub async fn run(mut self, mut channel: mpsc::Receiver<GuestMetric>) -> io::Result<()> {
-        while let Some(metric) = channel.next().await {
+    pub async fn run(mut self, channel: flume::Receiver<GuestMetric>) -> io::Result<()> {
+        while let Ok(metric) = channel.recv_async().await {
             match metric {
                 GuestMetric::OperatingSystem(os_info) => self.publish_osinfo(&os_info)?,
                 GuestMetric::Memory(memory_info) => self.publish_memory(&memory_info)?,

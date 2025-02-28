@@ -7,7 +7,8 @@ categories.workspace = true
 
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
-futures = "0.3"
+smol = "2.0.2"
+flume = "0.11.1"
 
 [target.'cfg(unix)'.dependencies]
 uname = "0.1.1"

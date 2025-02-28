@@ -1,4 +1,3 @@
-use std::sync::mpsc;
 use std::time::Duration;
 
 use clap::Parser;
@@ -15,7 +14,7 @@ use crate::{run_async, GuestAgentConfig};
 const SERVICE_NAME: &str = "xenguestagent-rs";
 
 fn service_main() -> anyhow::Result<()> {
-    let (stop_tx, stop_rx) = mpsc::channel();
+    let (stop_tx, stop_rx) = flume::bounded(0);
 
     let event_handler = move |control_event| -> ServiceControlHandlerResult {
         match control_event {
@@ -43,18 +42,10 @@ fn service_main() -> anyhow::Result<()> {
 
     log::info!("Service starting");
 
-    let builder = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()?;
-    let service_result = builder.block_on(async {
+    let service_result: anyhow::Result<()> = smol::block_on(async {
         let config = GuestAgentConfig::parse();
-        let mut set = run_async(&config).await?;
-        log::info!("Service started");
-        stop_rx.recv()?;
-        log::info!("Service stopping");
-        set.shutdown().await;
-        anyhow::Result::<()>::Ok(())
+        run_async(&config, stop_rx).await?;
+        Ok(())
     });
     match service_result {
         Ok(_) => log::info!("Service returned successfully"),

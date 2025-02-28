@@ -1,4 +1,3 @@
-use futures::{channel::mpsc, SinkExt};
 use guest_metrics::{os_info, plugin::GuestAgentPlugin, GuestMetric, KernelInfo, OsInfo};
 use std::io;
 
@@ -20,11 +19,11 @@ pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
 pub struct OsInfoPlugin;
 
 impl GuestAgentPlugin for OsInfoPlugin {
-    async fn run(self, mut channel: mpsc::Sender<guest_metrics::GuestMetric>) {
+    async fn run(self, channel: flume::Sender<guest_metrics::GuestMetric>) {
         let kernel_info = collect_kernel().expect("Unable to fetch kernel information");
 
         channel
-            .send(GuestMetric::OperatingSystem(OsInfo {
+            .send_async(GuestMetric::OperatingSystem(OsInfo {
                 os_info: os_info::get(),
                 kernel_info,
             }))

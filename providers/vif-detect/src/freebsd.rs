@@ -5,7 +5,11 @@ pub struct FreebsdVifDetector;
 
 impl super::VifDetector for FreebsdVifDetector {
     // identifies a VIF as named "xn%ID"
-    fn get_toolstack_interface(&self, iface_name: &str, _mac_addr: Option<&str>) -> Option<ToolstackNetInterface> {
+    fn get_toolstack_interface(
+        &self,
+        iface_name: &str,
+        _mac_addr: Option<&str>,
+    ) -> Option<ToolstackNetInterface> {
         const PREFIX: &str = "xn";
         if !iface_name.starts_with(PREFIX) {
             log::debug!("ignoring interface {iface_name} as not starting with '{PREFIX}'");

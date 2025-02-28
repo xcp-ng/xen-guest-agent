@@ -1,7 +1,5 @@
 use std::io;
 
-use futures::channel::mpsc;
-
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric};
 use provider_simple::SimpleNetworkPlugin;
 
@@ -17,10 +15,6 @@ pub enum NetworkPluginKind {
 
 impl Default for NetworkPluginKind {
     fn default() -> Self {
-        #[cfg(feature = "netlink")]
-        return Self::Netlink;
-
-        #[cfg(not(feature = "netlink"))]
         Self::Simple
     }
 }
@@ -36,11 +30,11 @@ impl NetworkPlugin {
         match kind {
             NetworkPluginKind::Simple => Ok(Self::Simple(SimpleNetworkPlugin::default())),
             #[cfg(feature = "netlink")]
-            NetworkPluginKind::Netlink => Ok(Self::Netlink(NetlinkPlugin::default())),
+            NetworkPluginKind::Netlink => Ok(Self::Netlink(NetlinkPlugin)),
         }
     }
 
-    pub async fn run(self, channel: mpsc::Sender<GuestMetric>) {
+    pub async fn run(self, channel: flume::Sender<GuestMetric>) {
         match self {
             NetworkPlugin::Simple(plugin) => plugin.run(channel).await,
             #[cfg(feature = "netlink")]

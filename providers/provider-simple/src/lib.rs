@@ -1,6 +1,6 @@
 use std::{collections::HashMap, time::Duration};
 
-use futures::SinkExt;
+use futures::StreamExt;
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric, NetEvent, NetEventOp, NetInterface};
 use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 use uuid::Uuid;
@@ -13,17 +13,14 @@ pub struct SimpleNetworkPlugin {
 }
 
 impl GuestAgentPlugin for SimpleNetworkPlugin {
-    async fn run(
-        mut self,
-        mut channel: futures::channel::mpsc::Sender<guest_metrics::GuestMetric>,
-    ) {
-        let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
+    async fn run(mut self, channel: flume::Sender<guest_metrics::GuestMetric>) {
+        let mut timer = smol::Timer::interval(Duration::from_secs_f32(5.0));
         let vif_detector = PlatformVifDetector::default();
 
         loop {
-            self.track_interfaces(&vif_detector, &mut channel).await;
+            self.track_interfaces(&vif_detector, &channel).await;
 
-            timer.tick().await;
+            timer.next().await;
         }
     }
 }
@@ -32,7 +29,7 @@ impl SimpleNetworkPlugin {
     async fn track_interfaces(
         &mut self,
         vif_detector: &impl VifDetector,
-        channel: &mut futures::channel::mpsc::Sender<GuestMetric>,
+        channel: &flume::Sender<GuestMetric>,
     ) {
         let interfaces = network_interface::NetworkInterface::show().unwrap();
 
@@ -67,7 +64,7 @@ impl SimpleNetworkPlugin {
             self.uuid_map.insert(interface.name.clone(), uuid);
 
             channel
-                .send(GuestMetric::AddIface(NetInterface {
+                .send_async(GuestMetric::AddIface(NetInterface {
                     uuid,
                     index: interface.index,
                     name: interface.name.clone(),
@@ -80,7 +77,7 @@ impl SimpleNetworkPlugin {
 
             for addr in &interface.addr {
                 channel
-                    .send(GuestMetric::Network(NetEvent {
+                    .send_async(GuestMetric::Network(NetEvent {
                         iface_id: uuid,
                         op: NetEventOp::AddIp(addr.ip()),
                     }))
@@ -90,7 +87,7 @@ impl SimpleNetworkPlugin {
 
             if let Some(mac) = interface.mac_addr.clone() {
                 channel
-                    .send(GuestMetric::Network(NetEvent {
+                    .send_async(GuestMetric::Network(NetEvent {
                         iface_id: uuid,
                         op: NetEventOp::AddMac(mac),
                     }))
@@ -102,7 +99,10 @@ impl SimpleNetworkPlugin {
         for interface in removed_interfaces {
             let uuid = self.uuid_map[&interface];
 
-            channel.send(GuestMetric::RmIface(uuid)).await.unwrap();
+            channel
+                .send_async(GuestMetric::RmIface(uuid))
+                .await
+                .unwrap();
             self.interfaces.remove(&interface);
             self.uuid_map.remove(&interface);
         }
@@ -121,7 +121,7 @@ impl SimpleNetworkPlugin {
                     .all(|current_addr| addr != current_addr)
             }) {
                 channel
-                    .send(GuestMetric::Network(NetEvent {
+                    .send_async(GuestMetric::Network(NetEvent {
                         iface_id: uuid,
                         op: NetEventOp::AddIp(addr.ip()),
                     }))
@@ -137,7 +137,7 @@ impl SimpleNetworkPlugin {
                     .all(|current_addr| addr != current_addr)
             }) {
                 channel
-                    .send(GuestMetric::Network(NetEvent {
+                    .send_async(GuestMetric::Network(NetEvent {
                         iface_id: uuid,
                         op: NetEventOp::RmIp(addr.ip()),
                     }))
@@ -150,7 +150,7 @@ impl SimpleNetworkPlugin {
                 if let Some(mac) = current_interface.mac_addr.clone() {
                     // Remove MAC
                     channel
-                        .send(GuestMetric::Network(NetEvent {
+                        .send_async(GuestMetric::Network(NetEvent {
                             iface_id: uuid,
                             op: NetEventOp::RmMac(mac),
                         }))
@@ -161,7 +161,7 @@ impl SimpleNetworkPlugin {
                 if let Some(mac) = interface.mac_addr.clone() {
                     // Remove MAC
                     channel
-                        .send(GuestMetric::Network(NetEvent {
+                        .send_async(GuestMetric::Network(NetEvent {
                             iface_id: uuid,
                             op: NetEventOp::AddMac(mac),
                         }))

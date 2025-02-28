@@ -3,10 +3,7 @@ use std::{collections::HashMap, io};
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric, NetEvent, NetEventOp, NetInterface};
 use vif_detect::VifDetector;
 
-use futures::{
-    channel::mpsc::{self, UnboundedReceiver},
-    SinkExt, StreamExt,
-};
+use futures::{channel::mpsc::UnboundedReceiver, StreamExt};
 use uuid::Uuid;
 
 use netlink_packet_core::{
@@ -49,7 +46,7 @@ impl NetlinkConnection {
 pub struct NetlinkPlugin;
 
 impl GuestAgentPlugin for NetlinkPlugin {
-    async fn run(self, mut channel: mpsc::Sender<GuestMetric>) {
+    async fn run(self, channel: flume::Sender<GuestMetric>) {
         let connection = NetlinkConnection::new().unwrap();
         let vif_identify = vif_detect::PlatformVifDetector::default();
         let mut interfaces = HashMap::new();
@@ -91,7 +88,7 @@ impl GuestAgentPlugin for NetlinkPlugin {
         while let Some(msg) = stream.next().await {
             if let NetlinkPayload::InnerMessage(inner_msg) = msg.payload {
                 if let Err(e) =
-                    process_message(inner_msg, &mut channel, &vif_identify, &mut interfaces).await
+                    process_message(inner_msg, &channel, &vif_identify, &mut interfaces).await
                 {
                     log::error!("Unable to process netlink message: {e}");
                 }
@@ -102,7 +99,7 @@ impl GuestAgentPlugin for NetlinkPlugin {
 
 async fn process_message(
     inner_msg: RouteNetlinkMessage,
-    channel: &mut mpsc::Sender<GuestMetric>,
+    channel: &flume::Sender<GuestMetric>,
     vif_identify: &impl VifDetector,
     interfaces: &mut HashMap<u32, Uuid>,
 ) -> anyhow::Result<()> {
@@ -145,7 +142,7 @@ async fn process_message(
 
             interfaces.insert(link_message.header.index, uuid);
             channel
-                .send(GuestMetric::AddIface(NetInterface {
+                .send_async(GuestMetric::AddIface(NetInterface {
                     uuid,
                     index: link_message.header.index,
                     name: ifname.clone(),
@@ -158,7 +155,7 @@ async fn process_message(
                 return Ok(());
             };
 
-            channel.send(GuestMetric::RmIface(uuid)).await.ok();
+            channel.send_async(GuestMetric::RmIface(uuid)).await.ok();
         }
         RouteNetlinkMessage::NewAddress(address_message)
         | RouteNetlinkMessage::GetAddress(address_message) => {
@@ -184,7 +181,7 @@ async fn process_message(
             };
 
             channel
-                .send(GuestMetric::Network(NetEvent {
+                .send_async(GuestMetric::Network(NetEvent {
                     iface_id,
                     op: NetEventOp::AddIp(addr),
                 }))
@@ -213,7 +210,7 @@ async fn process_message(
             };
 
             channel
-                .send(GuestMetric::Network(NetEvent {
+                .send_async(GuestMetric::Network(NetEvent {
                     iface_id,
                     op: NetEventOp::RmIp(addr),
                 }))
