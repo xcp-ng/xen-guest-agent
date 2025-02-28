@@ -31,7 +31,7 @@ impl super::VifDetector for WindowsVifDetector {
         for vif_id in xs.directory("device/vif").ok()? {
             let Some(vif_mac) = xs.read(&format!("device/vif/{vif_id}/mac")).ok() else {
                 log::warn!("vif/{vif_id} has no MAC address");
-                continue
+                continue;
             };
 
             if mac_addr.trim().eq_ignore_ascii_case(vif_mac.trim()) {

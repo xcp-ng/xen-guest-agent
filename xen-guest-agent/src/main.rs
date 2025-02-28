@@ -6,9 +6,8 @@ mod windows_debug_logger;
 mod windows_service_main;
 
 use clap::Parser;
-use futures::{channel::mpsc, SinkExt};
 use log::LevelFilter;
-use tokio::task::JoinSet;
+use smol::Executor;
 
 use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric};
 use plugins::{NetworkPlugin, NetworkPluginKind};
@@ -49,36 +48,41 @@ struct GuestAgentConfig {
     service: bool,
 }
 
-pub(crate) async fn run_async(config: &GuestAgentConfig) -> anyhow::Result<JoinSet<()>> {
+pub(crate) async fn run_async(
+    executor: &Executor<'_>,
+    config: &GuestAgentConfig,
+) -> anyhow::Result<()> {
     setup_logger(config.stderr, config.log_level)?;
 
-    let mut set: JoinSet<()> = JoinSet::new();
-
-    let (mut tx, rx) = mpsc::channel(4);
+    let (tx, rx) = flume::bounded(4);
     let publisher = AgentPublisher::new(config.publisher)?;
+    let mut tasks = vec![];
 
-    set.spawn(publisher.run(rx));
+    tasks.push(executor.spawn(publisher.run(rx)));
 
     if config.report_nics {
         // Remove old entries from previous agent to avoid having unknown
         // interfaces. We will repopulate existing ones immediatly.
-        tx.send(GuestMetric::CleanupIfaces).await?;
-        set.spawn(NetworkPlugin::new(config.network)?.run(tx.clone()));
+        tx.send_async(GuestMetric::CleanupIfaces).await?;
+        tasks.push(executor.spawn(NetworkPlugin::new(config.network)?.run(tx.clone())));
     }
 
-    set.spawn(provider_os::OsInfoPlugin.run(tx.clone()));
-    set.spawn(provider_memory::MemoryPlugin.run(tx.clone()));
+    tasks.push(executor.spawn(provider_os::OsInfoPlugin.run(tx.clone())));
+    tasks.push(executor.spawn(provider_memory::MemoryPlugin.run(tx.clone())));
 
-    Ok(set)
+    for task in tasks {
+        task.await
+    }
+
+    Ok(())
 }
 
 #[cfg(unix)]
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn main() -> anyhow::Result<()> {
     let config = GuestAgentConfig::parse();
-    let set = run_async(&config).await?;
-    set.join_all().await;
-    Ok(())
+    let executor = Executor::new();
+
+    smol::block_on(executor.run(run_async(&executor, &config)))
 }
 
 #[cfg(windows)]
@@ -87,15 +91,8 @@ fn main() -> anyhow::Result<()> {
     if config.service {
         windows_service_main::dispatch_main()
     } else {
-        let builder = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .enable_all()
-            .build()?;
-        builder.block_on(async {
-            let set = run_async(&config).await?;
-            set.join_all().await;
-            anyhow::Result::<()>::Ok(())
-        })
+        let executor = Executor::new();
+        smol::block_on(executor.run(run_async(&executor, &config)))
     }
 }
 

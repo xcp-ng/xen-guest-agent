@@ -3,7 +3,6 @@ mod std;
 
 use ::std::io;
 
-use futures::channel::mpsc;
 use guest_metrics::plugin::GuestAgentPublisher;
 use xenstore_rs::Xs;
 
@@ -20,7 +19,7 @@ pub fn xs_unpublish(xs: &impl Xs, key: &str) -> io::Result<()> {
 pub struct XenstoreRfcPublisher;
 
 impl GuestAgentPublisher for XenstoreRfcPublisher {
-    async fn run(self, channel: mpsc::Receiver<guest_metrics::GuestMetric>) {
+    async fn run(self, channel: flume::Receiver<guest_metrics::GuestMetric>) {
         #[cfg(not(target_os = "windows"))]
         let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
 
@@ -37,7 +36,7 @@ impl GuestAgentPublisher for XenstoreRfcPublisher {
 pub struct XenstoreStdPublisher;
 
 impl GuestAgentPublisher for XenstoreStdPublisher {
-    async fn run(self, channel: mpsc::Receiver<guest_metrics::GuestMetric>) {
+    async fn run(self, channel: flume::Receiver<guest_metrics::GuestMetric>) {
         #[cfg(not(target_os = "windows"))]
         let xs = xenstore_rs::unix::XsUnix::new().expect("Unable to initialize xenstore");
 

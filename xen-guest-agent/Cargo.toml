@@ -8,12 +8,13 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 futures = "0.3.26"
-tokio = { version = "1.25.0", features = ["rt", "macros", "rt-multi-thread"] }
+smol = "2.0.2"
 log = "0.4.0"
 env_logger = { version = ">=0.10.0", default-features = false }
 clap = { version = "4.4.8", features = ["derive"] }
 enum_dispatch = "0.3"
 anyhow = "1.0"
+flume = "0.11.1"
 
 guest-metrics = { path = "../guest-metrics" }
 

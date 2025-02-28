@@ -1,6 +1,6 @@
 use std::{io, time::Duration};
 
-use futures::{channel::mpsc, SinkExt};
+use futures::StreamExt;
 use guest_metrics::{plugin::GuestAgentPlugin, MemoryInfo};
 
 #[cfg(target_os = "freebsd")]
@@ -30,16 +30,16 @@ pub type PlatformMemorySource = windows::WindowsMemorySource;
 pub struct MemoryPlugin;
 
 impl GuestAgentPlugin for MemoryPlugin {
-    async fn run(self, mut channel: mpsc::Sender<guest_metrics::GuestMetric>) {
-        let mut timer = tokio::time::interval(Duration::from_secs_f32(5.0));
+    async fn run(self, channel: flume::Sender<guest_metrics::GuestMetric>) {
+        let mut timer = smol::Timer::interval(Duration::from_secs_f32(5.0));
         let mut memory_source =
             PlatformMemorySource::new().expect("Unable to get memory information");
 
         loop {
-            timer.tick().await;
+            timer.next().await;
 
             if channel
-                .send(guest_metrics::GuestMetric::Memory(MemoryInfo {
+                .send_async(guest_metrics::GuestMetric::Memory(MemoryInfo {
                     mem_free: memory_source.get_available_kb().unwrap(),
                     mem_total: memory_source.get_total_kb().unwrap(),
                 }))

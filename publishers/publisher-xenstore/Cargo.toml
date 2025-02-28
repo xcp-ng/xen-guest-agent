@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
 uuid = "1.11"
-futures = "0.3"
+flume = "0.11.1"
 log = "*"
 xenstore-rs = "0.8"
 

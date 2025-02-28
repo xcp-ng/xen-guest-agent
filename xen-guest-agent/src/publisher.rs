@@ -1,7 +1,5 @@
 use std::io;
 
-use futures::channel::mpsc;
-
 use guest_metrics::{plugin::GuestAgentPublisher, GuestMetric};
 use publisher_console::ConsolePublisher;
 use publisher_xenstore::{XenstoreRfcPublisher, XenstoreStdPublisher};
@@ -29,7 +27,7 @@ impl AgentPublisher {
         }
     }
 
-    pub async fn run(self, channel: mpsc::Receiver<GuestMetric>) {
+    pub async fn run(self, channel: flume::Receiver<GuestMetric>) {
         match self {
             AgentPublisher::Console(publisher) => publisher.run(channel).await,
             AgentPublisher::XenstoreRfc(publisher) => publisher.run(channel).await,
