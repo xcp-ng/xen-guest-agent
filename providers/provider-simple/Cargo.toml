@@ -1,0 +1,14 @@
+[package]
+name = "provider-simple"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = "0.3"
+guest-metrics = { path = "../../guest-metrics" }
+uuid = { version = "1.11", features = ["v4"] }
+smol = "2.0.2"
+flume = "0.11.1"
+
+vif-detect = { path = "../vif-detect" }
+network-interface = "2.0"

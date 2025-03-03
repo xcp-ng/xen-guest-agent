@@ -1,48 +1,21 @@
-[package]
-name = "xen-guest-agent"
-version = "0.5.0-dev"
-authors = ["Yann Dirson <yann.dirson@vates.fr>"]
-edition = "2018"
-rust-version = "1.71"
-license = "AGPL-3.0-only"
+[workspace]
+package.version = "0.6.0-dev"
+package.repository = "https://gitlab.com/xen-project/xen-guest-agent"
+package.categories = ["virtualization"]
+package.edition = "2021"
+resolver = "2"
 
-[dependencies]
-futures = "0.3.26"
-libc = "0.2.139"
-tokio = { version = "1.25.0", features = ["full"] }
-netlink-packet-core = { version = "0.7.0", optional = true }
-netlink-packet-route = { version = ">=0.18.0, <0.20", optional = true }
-netlink-proto = { version = "0.11.2", optional = true }
-rtnetlink = { version = "0.14.0", optional = true }
-async-stream = "0.3.4"
-os_info = { version = "3", default-features = false }
-pnet_datalink = { version = "*", optional = true }
-pnet_base = { version = "*", optional = true }
-ipnetwork = { version = "*", optional = true }
-log = "0.4.0"
-env_logger = ">=0.10.0"
-clap = { version = "4.4.8", features = ["derive"] }
-
-[dependencies.xenstore-rs]
-optional = true
-version = "0.7.0"
-#git = "https://github.com/Wenzel/xenstore.git"
-default-features = false
-
-[target.'cfg(unix)'.dependencies]
-uname = "0.1.1"
-syslog = "6.0"
-
-[target.'cfg(target_os = "freebsd")'.dependencies]
-sysctl = "0.5.0"
-
-[features]
-default = ["xenstore", "net_netlink"]
-xenstore = ["dep:xenstore-rs"]
-static = ["xenstore-rs?/static"]
-net_netlink = ["dep:netlink-proto", "dep:netlink-packet-core", "dep:netlink-packet-route",
-               "dep:rtnetlink"]
-net_pnet = ["dep:pnet_datalink", "dep:pnet_base", "dep:ipnetwork"]
+members = [
+  "xen-guest-agent",
+  "guest-metrics",
+  "providers/provider-os",
+  "providers/provider-memory",
+  #"providers/provider-netlink",
+  "providers/provider-simple",
+  "publishers/publisher-xenstore",
+  "publishers/publisher-console",
+]
 
 [profile.release]
 lto = true
+debug = "full"
