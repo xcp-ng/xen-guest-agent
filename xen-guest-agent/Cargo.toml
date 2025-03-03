@@ -1,0 +1,43 @@
+[package]
+name = "xen-guest-agent"
+version = "0.5.0-dev"
+authors = ["Yann Dirson <yann.dirson@vates.fr>"]
+edition = "2021"
+rust-version = "1.76"
+license = "AGPL-3.0-only"
+
+[dependencies]
+futures = "0.3.26"
+smol = "2.0.2"
+log = "0.4.0"
+env_logger = { version = ">=0.10.0", default-features = false }
+clap = { version = "4.4.8", features = ["derive"] }
+enum_dispatch = "0.3"
+anyhow = "1.0"
+flume = "0.11.1"
+
+guest-metrics = { path = "../guest-metrics" }
+
+publisher-console = { path = "../publishers/publisher-console" }
+publisher-xenstore = { path = "../publishers/publisher-xenstore" }
+
+provider-memory = { path = "../providers/provider-memory" }
+provider-os = { path = "../providers/provider-os" }
+provider-simple = { path = "../providers/provider-simple" }
+provider-netlink = { path = "../providers/provider-netlink", optional = true }
+
+[target.'cfg(target_os = "freebsd")'.dependencies]
+sysctl = "0.5.0"
+
+[target.'cfg(target_family = "unix")'.dependencies]
+syslog = "6.0"
+
+[target."cfg(windows)".dependencies]
+windows = { version = "0.58", features = [
+  "Win32_Foundation",
+  "Win32_System_Diagnostics_Debug",
+] }
+windows-service = "0.8"
+
+[features]
+netlink = ["dep:provider-netlink"]

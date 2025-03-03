@@ -1,0 +1,15 @@
+[package]
+name = "publisher-xenstore"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+guest-metrics = { path = "../../guest-metrics" }
+uuid = "1.11"
+flume = "0.11.1"
+log = "*"
+xenstore-rs = "0.8"
+
+# Also use xenstore-win on Windows
+[target.'cfg(target_os = "windows")'.dependencies]
+xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git" }
