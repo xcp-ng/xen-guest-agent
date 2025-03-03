@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use clap::Parser;
 use smol::Executor;
 use windows::Win32::Foundation::{ERROR_INVALID_PARAMETER, ERROR_SUCCESS};
 
@@ -45,7 +44,7 @@ fn service_main() -> anyhow::Result<()> {
 
     let executor = Executor::new();
     let service_result = smol::block_on(async {
-        let config = GuestAgentConfig::parse();
+        let config: GuestAgentConfig = argh::from_env();
         run_async(&executor, &config).await?;
         log::info!("Service started");
         stop_rx.recv_async().await?;

@@ -11,7 +11,6 @@ futures = "0.3.26"
 smol = "2.0.2"
 log = "0.4.0"
 env_logger = { version = ">=0.10.0", default-features = false }
-clap = { version = "4.4.8", features = ["derive"] }
 enum_dispatch = "0.3"
 anyhow = "1.0"
 flume = "0.11.1"
@@ -25,6 +24,12 @@ provider-memory = { path = "../providers/provider-memory" }
 provider-os = { path = "../providers/provider-os" }
 provider-simple = { path = "../providers/provider-simple" }
 provider-netlink = { path = "../providers/provider-netlink", optional = true }
+
+[dependencies.argh]
+# enum support is not yet released and 
+git = "https://github.com/google/argh"
+rev = "79d3022364d7df5f43c4b7e8e1826d50dd04e669"
+features = ["help"]
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
 sysctl = "0.5.0"

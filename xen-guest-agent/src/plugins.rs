@@ -6,7 +6,7 @@ use provider_simple::SimpleNetworkPlugin;
 #[cfg(feature = "netlink")]
 use provider_netlink::NetlinkPlugin;
 
-#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+#[derive(Clone, Copy, Debug, argh::FromArgValue)]
 pub enum NetworkPluginKind {
     Simple,
     #[cfg(feature = "netlink")]

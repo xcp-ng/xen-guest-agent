@@ -4,7 +4,7 @@ use guest_metrics::{plugin::GuestAgentPublisher, GuestMetric};
 use publisher_console::ConsolePublisher;
 use publisher_xenstore::{XenstoreRfcPublisher, XenstoreStdPublisher};
 
-#[derive(Clone, Copy, Default, Debug, clap::ValueEnum)]
+#[derive(Clone, Copy, Default, Debug, argh::FromArgValue)]
 pub enum PublisherKind {
     Console,
     #[default]

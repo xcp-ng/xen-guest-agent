@@ -5,7 +5,6 @@ mod windows_debug_logger;
 #[cfg(windows)]
 mod windows_service_main;
 
-use clap::Parser;
 use log::LevelFilter;
 use smol::Executor;
 
@@ -16,35 +15,38 @@ use publisher::{AgentPublisher, PublisherKind};
 #[cfg(windows)]
 use windows_debug_logger::WindowsDebugLogger;
 
-const MEM_PERIOD_SECONDS: f64 = 5.0;
+//const MEM_PERIOD_SECONDS: f64 = 5.0;
 
-#[derive(clap::Parser)]
+#[derive(argh::FromArgs)]
+/// Xen Guest Agent
 struct GuestAgentConfig {
-    /// Print logs to stderr instead of system logs
-    #[arg(short, long)]
+    /// print logs to stderr instead of system logs
+    #[argh(switch, short = 's')]
     stderr: bool,
 
-    /// Highest level of detail to log
-    #[arg(short, long, default_value_t = LevelFilter::Info)]
+    /// highest level of detail to log
+    #[argh(option, short = 'l', default = "LevelFilter::Info")]
     log_level: LevelFilter,
 
-    /// Whether we report NICs.
-    #[arg(short, long, default_value_t = true)]
-    report_nics: bool,
+    /// whether we don't report NICs
+    #[argh(switch, long = "no-nics")]
+    no_nics: bool,
 
-    /// Update period.
-    #[arg(short, long, default_value_t = MEM_PERIOD_SECONDS)]
-    period: f64,
+    // /// update period
+    //#[argh(option, short = 'p', default = "MEM_PERIOD_SECONDS")]
+    //period: f64,
 
-    #[arg(long, value_enum, default_value_t = Default::default())]
+    #[argh(option, default = "Default::default()")]
+    /// data publisher to use
     publisher: PublisherKind,
 
-    #[arg(long, value_enum, default_value_t = Default::default())]
+    #[argh(option, default = "Default::default()")]
+    /// network plugin to use
     network: NetworkPluginKind,
 
-    /// Run as a Windows service.
+    /// run as a Windows service.
     #[cfg(windows)]
-    #[arg(long)]
+    #[argh(switch, long = "service")]
     service: bool,
 }
 
@@ -60,7 +62,7 @@ pub(crate) async fn run_async(
 
     tasks.push(executor.spawn(publisher.run(rx)));
 
-    if config.report_nics {
+    if !config.no_nics {
         // Remove old entries from previous agent to avoid having unknown
         // interfaces. We will repopulate existing ones immediatly.
         tx.send_async(GuestMetric::CleanupIfaces).await?;
@@ -79,7 +81,7 @@ pub(crate) async fn run_async(
 
 #[cfg(unix)]
 fn main() -> anyhow::Result<()> {
-    let config = GuestAgentConfig::parse();
+    let config: GuestAgentConfig = argh::from_env();
     let executor = Executor::new();
 
     smol::block_on(executor.run(run_async(&executor, &config)))
@@ -87,7 +89,7 @@ fn main() -> anyhow::Result<()> {
 
 #[cfg(windows)]
 fn main() -> anyhow::Result<()> {
-    let config = GuestAgentConfig::parse();
+    let config: GuestAgentConfig = argh::from_env();
     if config.service {
         windows_service_main::dispatch_main()
     } else {
