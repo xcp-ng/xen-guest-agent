@@ -35,6 +35,7 @@ syslog = "6.0"
 [target."cfg(windows)".dependencies]
 windows-service = "0.8"
 xen-win-utils = { path = "../xen-win-utils" }
+provider-clipboard = { path = "../providers/provider-clipboard" }
 
 [target."cfg(windows)".build-dependencies]
 winres = "0.1"

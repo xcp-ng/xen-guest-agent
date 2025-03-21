@@ -69,6 +69,11 @@ pub(crate) async fn run_async(
     tasks.push(executor.spawn(provider_os::OsInfoPlugin.run(tx.clone())));
     tasks.push(executor.spawn(provider_memory::MemoryPlugin.run(tx.clone())));
 
+    #[cfg(windows)]
+    tasks.push(
+        executor.spawn(provider_clipboard::windows::WindowsClipboardPlugin::new()?.run(tx.clone())),
+    );
+
     executor
         .run(async {
             log::info!("Waiting for exit command");
