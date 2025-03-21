@@ -1,8 +1,6 @@
 mod plugins;
 mod publisher;
 #[cfg(windows)]
-mod windows_debug_logger;
-#[cfg(windows)]
 mod windows_service_main;
 
 use clap::Parser;
@@ -16,7 +14,7 @@ use plugins::{NetworkPlugin, NetworkPluginKind};
 use publisher::{AgentPublisher, PublisherKind};
 
 #[cfg(windows)]
-use windows_debug_logger::WindowsDebugLogger;
+use xen_win_utils::windows_debug_logger::WindowsDebugLogger;
 
 const MEM_PERIOD_SECONDS: f64 = 5.0;
 
@@ -146,7 +144,9 @@ fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
 
 #[cfg(windows)]
 fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
-    log::set_boxed_logger(Box::new(WindowsDebugLogger {}))?;
+    log::set_boxed_logger(Box::new(WindowsDebugLogger {
+        prefix: "[xen-guest-agent]".to_string(),
+    }))?;
     log::set_max_level(level);
     Ok(())
 }

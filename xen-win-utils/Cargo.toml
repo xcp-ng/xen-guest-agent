@@ -1,0 +1,26 @@
+[package]
+name = "xen-win-utils"
+version = "0.5.0-dev"
+edition = "2021"
+rust-version = "1.76"
+license = "AGPL-3.0-only"
+
+[dependencies]
+log = "0.4.0"
+windows = { version = "0.61", features = [
+  "Win32_Foundation",
+  "Win32_Security_Authorization",
+  "Win32_Security",
+  "Win32_Storage_FileSystem",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_IO",
+  "Win32_System_LibraryLoader",
+  "Win32_System_Pipes",
+  "Win32_System_SystemInformation",
+  "Win32_System_SystemServices",
+  "Win32_System_Threading",
+  "Win32_UI_WindowsAndMessaging",
+  "Wdk_Foundation",
+  "Wdk_System_SystemServices",
+  "Wdk_Storage_FileSystem",
+] }
