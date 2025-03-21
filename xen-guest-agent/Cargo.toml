@@ -36,5 +36,8 @@ syslog = "6.0"
 windows-service = "0.8"
 xen-win-utils = { path = "../xen-win-utils" }
 
+[target."cfg(windows)".build-dependencies]
+winres = "0.1"
+
 [features]
 netlink = ["dep:provider-netlink"]
