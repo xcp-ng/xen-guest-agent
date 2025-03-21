@@ -118,6 +118,9 @@ impl<XS: Xs + 'static> XenstoreRfc<XS> {
                         }
                     }
                 }
+                GuestMetric::GetClipboard(_) => {
+                    // TODO
+                }
             }
         }
 

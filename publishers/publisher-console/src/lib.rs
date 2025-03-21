@@ -64,6 +64,9 @@ impl ConsolePublisher {
                 }
             }
             GuestMetric::CleanupIfaces => {}
+            GuestMetric::GetClipboard(clipboard) => {
+                println!("Clipboard: {}", String::from_utf8_lossy(&clipboard));
+            }
         }
     }
 }

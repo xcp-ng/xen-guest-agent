@@ -1,5 +1,5 @@
 use guest_metrics::{
-    os_info, GuestMetric, MemoryInfo, NetEvent, NetEventOp, NetInterface, OsInfo,
+    os_info, ClipboardData, GuestMetric, MemoryInfo, NetEvent, NetEventOp, NetInterface, OsInfo,
     ToolstackNetInterface,
 };
 use std::collections::HashMap;
@@ -171,6 +171,14 @@ impl<XS: Xs> XenstoreStd<XS> {
         Ok(())
     }
 
+    fn publish_clipboard(&mut self, clipboard_data: &ClipboardData) -> io::Result<()> {
+        xs_publish(
+            &self.xs,
+            "data/report_clipboard",
+            &String::from_utf8_lossy(&clipboard_data),
+        )
+    }
+
     fn cleanup_ifaces(&mut self) -> io::Result<()> {
         // Currently only vif interfaces are cleaned
         xs_unpublish(&self.xs, "attr/vif")
@@ -216,6 +224,7 @@ impl<XS: Xs> XenstoreStd<XS> {
                         }
                     }
                 }
+                GuestMetric::GetClipboard(clipboard) => self.publish_clipboard(&clipboard)?,
             }
         }
 
