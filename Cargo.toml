@@ -15,6 +15,7 @@ members = [
   "publishers/publisher-xenstore",
   "publishers/publisher-console",
   "xen-win-utils",
+  "xen-win-clipboard",
 ]
 
 [profile.release]
