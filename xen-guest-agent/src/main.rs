@@ -57,7 +57,7 @@ pub(crate) async fn run_async(
     let mut tasks = vec![];
     let executor = Executor::new();
 
-    tasks.push(executor.spawn(publisher.run(rx)));
+    tasks.push(executor.spawn(publisher.run(rx.clone())));
 
     if config.report_nics {
         // Remove old entries from previous agent to avoid having unknown

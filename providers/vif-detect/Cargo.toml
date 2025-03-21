@@ -9,4 +9,4 @@ guest-metrics = { path = "../../guest-metrics" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 xenstore-rs = "0.8"
-xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git" }
+xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git", features = ["smol"] }
