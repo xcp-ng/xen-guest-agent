@@ -19,7 +19,7 @@ os_info = { version = "3", default-features = false }
 pnet_datalink = { version = "*", optional = true }
 pnet_base = { version = "*", optional = true }
 ipnetwork = { version = "*", optional = true }
-log = "0.4.0"
+log = "0.4.27"
 env_logger = ">=0.10.0"
 clap = { version = "4.4.8", features = ["derive"] }
 
