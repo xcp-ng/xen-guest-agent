@@ -8,6 +8,10 @@ use std::net::IpAddr;
 use uuid::Uuid;
 use xenstore_rs::Xs;
 
+use crate::version::{
+    AGENT_VERSION_BUILD, AGENT_VERSION_MAJOR, AGENT_VERSION_MICRO, AGENT_VERSION_MINOR,
+};
+
 use super::{xs_publish, xs_unpublish};
 
 pub struct XenstoreStd<XS: Xs + 'static> {
@@ -32,12 +36,6 @@ struct IfaceIpStruct {
 }
 type IpList = HashMap<u32, IfaceIpStruct>;
 
-// pseudo version for xe-daemon compatibility, real agent version in
-// BuildVersion below
-const AGENT_VERSION_MAJOR: &str = "1"; // XO does not show version at all if 0
-const AGENT_VERSION_MINOR: &str = "0";
-const AGENT_VERSION_MICRO: &str = "0"; // XAPI exposes "-1" if missing
-
 impl<XS: Xs + 'static> XenstoreStd<XS> {
     pub fn new(xs: XS) -> Self {
         let ip_addresses = IpList::new();
@@ -57,10 +55,15 @@ fn iface_prefix(iface_id: u32) -> String {
 impl<XS: Xs> XenstoreStd<XS> {
     fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
         // FIXME this is not anywhere standard, just minimal XS compatibility
+        xs_publish(&self.xs, "attr/PVAddons/Installed", "1")?;
         xs_publish(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR)?;
         xs_publish(&self.xs, "attr/PVAddons/MinorVersion", AGENT_VERSION_MINOR)?;
         xs_publish(&self.xs, "attr/PVAddons/MicroVersion", AGENT_VERSION_MICRO)?;
-        let agent_version_build = format!("proto-{}", &env!("CARGO_PKG_VERSION"));
+        let agent_version_build = if AGENT_VERSION_BUILD.is_empty() {
+            &format!("proto-{}", &env!("CARGO_PKG_VERSION"))
+        } else {
+            AGENT_VERSION_BUILD
+        };
         xs_publish(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build)?;
 
         xs_publish(
@@ -78,9 +81,10 @@ impl<XS: Xs> XenstoreStd<XS> {
         // in xe-guest-utilities at least for Debian
         let os_version = info.os_info.version();
         match os_version {
-            os_info::Version::Semantic(major, minor, _patch) => {
+            os_info::Version::Semantic(major, minor, patch) => {
                 xs_publish(&self.xs, "data/os_majorver", &major.to_string())?;
                 xs_publish(&self.xs, "data/os_minorver", &minor.to_string())?;
+                xs_publish(&self.xs, "data/os_buildver", &patch.to_string())?;
             }
             _ => {
                 // FIXME what to do with strings?
