@@ -1,7 +1,6 @@
 use std::time::Duration;
 
 use clap::Parser;
-use windows::Win32::Foundation::{ERROR_INVALID_PARAMETER, ERROR_SUCCESS};
 
 use windows_service::service::{
     ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
@@ -34,7 +33,7 @@ fn service_main() -> anyhow::Result<()> {
         service_type: ServiceType::OWN_PROCESS,
         current_state: ServiceState::Running,
         controls_accepted: ServiceControlAccept::STOP,
-        exit_code: ServiceExitCode::Win32(ERROR_SUCCESS.0),
+        exit_code: ServiceExitCode::Win32(0),
         checkpoint: 0,
         wait_hint: Duration::default(),
         process_id: None,
@@ -57,9 +56,9 @@ fn service_main() -> anyhow::Result<()> {
         current_state: ServiceState::Stopped,
         controls_accepted: ServiceControlAccept::empty(),
         exit_code: if service_result.is_ok() {
-            ServiceExitCode::Win32(ERROR_SUCCESS.0)
+            ServiceExitCode::Win32(0)
         } else {
-            ServiceExitCode::Win32(ERROR_INVALID_PARAMETER.0)
+            ServiceExitCode::Win32(0x57) // ERROR_INVALID_PARAMETER
         },
         checkpoint: 0,
         wait_hint: Duration::default(),

@@ -1,6 +1,9 @@
 use guest_metrics::{os_info, plugin::GuestAgentPlugin, GuestMetric, KernelInfo, OsInfo};
 use std::io;
 
+#[cfg(windows)]
+use xen_win_utils;
+
 // UNIX uname() implementation
 #[cfg(unix)]
 pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
@@ -10,8 +13,16 @@ pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
     }))
 }
 
+#[cfg(windows)]
+pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
+    let version_info = xen_win_utils::get_version()?;
+    Ok(Some(guest_metrics::KernelInfo {
+        release: version_info,
+    }))
+}
+
 // default implementation
-#[cfg(not(unix))]
+#[cfg(all(not(unix), not(windows)))]
 pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
     Ok(None)
 }

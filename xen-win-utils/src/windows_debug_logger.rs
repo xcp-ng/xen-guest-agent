@@ -1,7 +1,9 @@
 use log::Log;
 use windows::{core::HSTRING, Win32::System::Diagnostics::Debug::OutputDebugStringW};
 
-pub(crate) struct WindowsDebugLogger {}
+pub struct WindowsDebugLogger {
+    pub prefix: String,
+}
 
 impl Log for WindowsDebugLogger {
     fn enabled(&self, _metadata: &log::Metadata) -> bool {
@@ -10,7 +12,8 @@ impl Log for WindowsDebugLogger {
 
     fn log(&self, record: &log::Record) {
         let message = format!(
-            "[xen-guest-agent] {}: {}\r\n",
+            "{} {}: {}\r\n",
+            self.prefix,
             record.level().as_str(),
             record.args()
         );

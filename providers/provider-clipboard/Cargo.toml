@@ -1,0 +1,22 @@
+[package]
+name = "provider-clipboard"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+futures = "0.3.31"
+xenstore-rs = "0.8"
+guest-metrics = { path = "../../guest-metrics" }
+anyhow = "1.0"
+log = "0.4"
+flume = "0.11"
+
+[target."cfg(windows)".dependencies]
+windows = {version = "0.61", features = [
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
+    "Win32_System_IO",
+]}
+windows-service = "0.8"
+xen-win-utils = { path = "../../xen-win-utils" }
+xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git", features = ["smol"] }

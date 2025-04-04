@@ -1,8 +1,6 @@
 mod plugins;
 mod publisher;
 #[cfg(windows)]
-mod windows_debug_logger;
-#[cfg(windows)]
 mod windows_service_main;
 
 use clap::Parser;
@@ -16,7 +14,7 @@ use plugins::{NetworkPlugin, NetworkPluginKind};
 use publisher::{AgentPublisher, PublisherKind};
 
 #[cfg(windows)]
-use windows_debug_logger::WindowsDebugLogger;
+use xen_win_utils::windows_debug_logger::WindowsDebugLogger;
 
 const MEM_PERIOD_SECONDS: f64 = 5.0;
 
@@ -59,7 +57,7 @@ pub(crate) async fn run_async(
     let mut tasks = vec![];
     let executor = Executor::new();
 
-    tasks.push(executor.spawn(publisher.run(rx)));
+    tasks.push(executor.spawn(publisher.run(rx.clone())));
 
     if config.report_nics {
         // Remove old entries from previous agent to avoid having unknown
@@ -70,6 +68,11 @@ pub(crate) async fn run_async(
 
     tasks.push(executor.spawn(provider_os::OsInfoPlugin.run(tx.clone())));
     tasks.push(executor.spawn(provider_memory::MemoryPlugin.run(tx.clone())));
+
+    #[cfg(windows)]
+    tasks.push(
+        executor.spawn(provider_clipboard::windows::WindowsClipboardPlugin::new()?.run(tx.clone())),
+    );
 
     executor
         .run(async {
@@ -146,7 +149,9 @@ fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
 
 #[cfg(windows)]
 fn setup_system_logger(level: LevelFilter) -> anyhow::Result<()> {
-    log::set_boxed_logger(Box::new(WindowsDebugLogger {}))?;
+    log::set_boxed_logger(Box::new(WindowsDebugLogger {
+        prefix: "[xen-guest-agent]".to_string(),
+    }))?;
     log::set_max_level(level);
     Ok(())
 }

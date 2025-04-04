@@ -54,6 +54,8 @@ pub struct MemoryInfo {
     pub mem_total: usize,
 }
 
+pub type ClipboardData = Box<[u8]>;
+
 pub enum GuestMetric {
     OperatingSystem(OsInfo),
     AddIface(NetInterface),
@@ -61,6 +63,8 @@ pub enum GuestMetric {
     Memory(MemoryInfo),
     Network(NetEvent),
     CleanupIfaces,
+    /// clipboard data coming from the guest
+    GetClipboard(ClipboardData),
 }
 
 pub use os_info;
