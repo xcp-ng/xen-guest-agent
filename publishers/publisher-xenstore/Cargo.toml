@@ -12,4 +12,4 @@ xenstore-rs = "0.8"
 
 # Also use xenstore-win on Windows
 [target.'cfg(target_os = "windows")'.dependencies]
-xenstore-win = { git = "https://github.com/TSnake41/xenstore-win.git", features = ["smol"] }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", branch = "xcp-ng-9.1", features = ["smol"] }
