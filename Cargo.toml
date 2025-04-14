@@ -21,7 +21,7 @@ pnet_base = { version = "*", optional = true }
 ipnetwork = { version = "*", optional = true }
 log = "0.4.0"
 env_logger = ">=0.10.0"
-clap = { version = "4.4.8", features = ["derive"] }
+clap = { version = "4.5.36", features = ["derive"] }
 
 [dependencies.xenstore-rs]
 optional = true
