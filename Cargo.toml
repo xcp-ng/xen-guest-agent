@@ -9,7 +9,7 @@ license = "AGPL-3.0-only"
 [dependencies]
 futures = "0.3.26"
 libc = "0.2.139"
-tokio = { version = "1.25.0", features = ["full"] }
+tokio = { version = "1.46.0", features = ["full"] }
 netlink-packet-core = { version = "0.7.0", optional = true }
 netlink-packet-route = { version = ">=0.18.0, <0.20", optional = true }
 netlink-proto = { version = "0.11.2", optional = true }
