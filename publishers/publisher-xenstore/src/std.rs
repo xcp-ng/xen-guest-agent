@@ -24,6 +24,7 @@ pub struct XenstoreStd<XS: AsyncXs + AsyncWatch + 'static> {
     // and gets created by the guest because xenopsd sets ~/control/
     // with domain ownership.  OTOH libxl creates it readonly, so we
     // catch the case where it is so to avoid uselessly retrying.
+    #[cfg(not(windows))]
     forbidden_control_feature_balloon: bool,
 
     ifaces: HashMap<Uuid, NetInterface>,
@@ -43,6 +44,7 @@ impl<XS: AsyncXs + AsyncWatch + 'static> XenstoreStd<XS> {
         XenstoreStd {
             xs,
             ip_addresses,
+            #[cfg(not(windows))]
             forbidden_control_feature_balloon: false,
             ifaces: HashMap::new(),
         }
@@ -54,6 +56,28 @@ fn iface_prefix(iface_id: u32) -> String {
 }
 
 impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
+    #[cfg(not(windows))]
+    async fn publish_control_balloon(&mut self) -> io::Result<()> {
+        if !self.forbidden_control_feature_balloon {
+            // we may want to be more clever some day, e.g. by
+            // checking if the guest indeed has ballooning, and if the
+            // balloon driver has reached the requested initial
+            // `~/memory/target` value (or, possibly, to rely on the
+            // balloon driver to do the job of signaling this
+            // condition)
+            match xs_publish_async(&self.xs, "control/feature-balloon", "1").await {
+                Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
+                    log::warn!("cannot write control/feature-balloon (impacts XAPI's squeezed)");
+                    self.forbidden_control_feature_balloon = true;
+                }
+                Ok(_) => (),
+                e => return e,
+            }
+        }
+
+        Ok(())
+    }
+
     async fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
         // FIXME this is not anywhere standard, just minimal XS compatibility
         xs_publish_async(&self.xs, "attr/PVAddons/Installed", "1").await?;
@@ -99,22 +123,8 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
             xs_publish_async(&self.xs, "data/os_uname", &kernel_info.release).await?;
         }
 
-        if !self.forbidden_control_feature_balloon {
-            // we may want to be more clever some day, e.g. by
-            // checking if the guest indeed has ballooning, and if the
-            // balloon driver has reached the requested initial
-            // `~/memory/target` value (or, possibly, to rely on the
-            // balloon driver to do the job of signaling this
-            // condition)
-            match xs_publish_async(&self.xs, "control/feature-balloon", "1").await {
-                Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-                    log::warn!("cannot write control/feature-balloon (impacts XAPI's squeezed)");
-                    self.forbidden_control_feature_balloon = true;
-                }
-                Ok(_) => (),
-                e => return e,
-            }
-        }
+        #[cfg(not(windows))]
+        self.publish_control_balloon().await?;
 
         Ok(())
     }
