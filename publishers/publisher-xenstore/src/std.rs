@@ -78,19 +78,8 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
         Ok(())
     }
 
-    async fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
-        // FIXME this is not anywhere standard, just minimal XS compatibility
-        xs_publish_async(&self.xs, "attr/PVAddons/Installed", "1").await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR).await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MinorVersion", AGENT_VERSION_MINOR).await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MicroVersion", AGENT_VERSION_MICRO).await?;
-        let agent_version_build = if AGENT_VERSION_BUILD.is_empty() {
-            &format!("proto-{}", &env!("CARGO_PKG_VERSION"))
-        } else {
-            AGENT_VERSION_BUILD
-        };
-        xs_publish_async(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build).await?;
-
+    #[cfg(not(windows))]
+    async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
         xs_publish_async(
             &self.xs,
             "data/os_distro",
@@ -103,6 +92,33 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
             &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
         )
         .await?;
+        Ok(())
+    }
+
+    #[cfg(windows)]
+    async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
+        xs_publish_async(
+            &self.xs,
+            "data/os_distro",
+            &info.os_info.os_type().to_string(),
+        )
+        .await?;
+        // On Windows, kernel version typically equals OS version.
+        // Prioritize reporting the edition (e.g. Windows 11 Professional) instead.
+        let name_string = match info.os_info.edition() {
+            Some(edition) => format!("{} {}", edition, info.os_info.bitness()),
+            _ => format!(
+                "{} {} {}",
+                info.os_info.os_type(),
+                info.os_info.version(),
+                info.os_info.bitness()
+            ),
+        };
+        xs_publish_async(&self.xs, "data/os_name", &name_string).await?;
+        Ok(())
+    }
+
+    async fn publish_osinfo_version(&mut self, info: &OsInfo) -> io::Result<()> {
         // FIXME .version only has "major" component right now; not a
         // big deal for a proto, os_minorver is known to be unreliable
         // in xe-guest-utilities at least for Debian
@@ -119,6 +135,25 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
                 log::info!("cannot parse yet os version {:?}", os_version);
             }
         }
+        Ok(())
+    }
+
+    async fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
+        // FIXME this is not anywhere standard, just minimal XS compatibility
+        xs_publish_async(&self.xs, "attr/PVAddons/Installed", "1").await?;
+        xs_publish_async(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR).await?;
+        xs_publish_async(&self.xs, "attr/PVAddons/MinorVersion", AGENT_VERSION_MINOR).await?;
+        xs_publish_async(&self.xs, "attr/PVAddons/MicroVersion", AGENT_VERSION_MICRO).await?;
+        let agent_version_build = if AGENT_VERSION_BUILD.is_empty() {
+            &format!("proto-{}", &env!("CARGO_PKG_VERSION"))
+        } else {
+            AGENT_VERSION_BUILD
+        };
+        xs_publish_async(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build).await?;
+
+        self.publish_osinfo_distro(info).await?;
+        self.publish_osinfo_version(info).await?;
+
         if let Some(kernel_info) = &info.kernel_info {
             xs_publish_async(&self.xs, "data/os_uname", &kernel_info.release).await?;
         }
