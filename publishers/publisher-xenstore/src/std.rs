@@ -1,5 +1,5 @@
 use guest_metrics::{
-    os_info, ClipboardData, GuestMetric, MemoryInfo, NetEvent, NetEventOp, NetInterface, OsInfo,
+    ClipboardData, GuestMetric, MemoryInfo, NetEvent, NetEventOp, NetInterface, OsInfo, OsVersion,
     ToolstackNetInterface,
 };
 use std::collections::HashMap;
@@ -80,16 +80,14 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
 
     #[cfg(not(windows))]
     async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
-        xs_publish_async(
-            &self.xs,
-            "data/os_distro",
-            &info.os_info.os_type().to_string(),
-        )
-        .await?;
+        xs_publish_async(&self.xs, "data/os_distro", &info.os_base_info.os_type).await?;
         xs_publish_async(
             &self.xs,
             "data/os_name",
-            &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
+            &format!(
+                "{} {}",
+                info.os_base_info.os_name, info.os_base_info.os_version
+            ),
         )
         .await?;
         Ok(())
@@ -97,24 +95,10 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
 
     #[cfg(windows)]
     async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
-        xs_publish_async(
-            &self.xs,
-            "data/os_distro",
-            &info.os_info.os_type().to_string(),
-        )
-        .await?;
-        // On Windows, kernel version typically equals OS version.
-        // Prioritize reporting the edition (e.g. Windows 11 Professional) instead.
-        let name_string = match info.os_info.edition() {
-            Some(edition) => format!("{} {}", edition, info.os_info.bitness()),
-            _ => format!(
-                "{} {} {}",
-                info.os_info.os_type(),
-                info.os_info.version(),
-                info.os_info.bitness()
-            ),
-        };
-        xs_publish_async(&self.xs, "data/os_name", &name_string).await?;
+        xs_publish_async(&self.xs, "data/os_distro", &info.os_base_info.os_type).await?;
+        // On Windows, there's no need to report the OS version.
+        // Prioritize reporting the OS caption (e.g. Microsoft Windows 11 Pro) instead.
+        xs_publish_async(&self.xs, "data/os_name", &info.os_base_info.os_name).await?;
         Ok(())
     }
 
@@ -122,12 +106,12 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
         // FIXME .version only has "major" component right now; not a
         // big deal for a proto, os_minorver is known to be unreliable
         // in xe-guest-utilities at least for Debian
-        let os_version = info.os_info.version();
+        let os_version = &info.os_base_info.os_version;
         match os_version {
-            os_info::Version::Semantic(major, minor, patch) => {
+            OsVersion::Numbered(major, minor, build) => {
                 xs_publish_async(&self.xs, "data/os_majorver", &major.to_string()).await?;
                 xs_publish_async(&self.xs, "data/os_minorver", &minor.to_string()).await?;
-                xs_publish_async(&self.xs, "data/os_buildver", &patch.to_string()).await?;
+                xs_publish_async(&self.xs, "data/os_buildver", &build.to_string()).await?;
             }
             _ => {
                 // FIXME what to do with strings?

@@ -1,6 +1,6 @@
 pub mod plugin;
 
-use std::net::IpAddr;
+use std::{fmt::Display, net::IpAddr};
 
 use uuid::Uuid;
 
@@ -43,8 +43,30 @@ pub struct NetEvent {
 }
 
 #[derive(Debug)]
+pub enum OsVersion {
+    Numbered(u64, u64, u64),
+    Custom(String),
+}
+
+impl Display for OsVersion {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OsVersion::Numbered(a, b, c) => write!(f, "{a}.{b}.{c}"),
+            OsVersion::Custom(version) => write!(f, "{version}"),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct OsBaseInfo {
+    pub os_type: String,
+    pub os_name: String,
+    pub os_version: OsVersion,
+}
+
+#[derive(Debug)]
 pub struct OsInfo {
-    pub os_info: os_info::Info,
+    pub os_base_info: OsBaseInfo,
     pub kernel_info: Option<KernelInfo>,
 }
 
@@ -66,5 +88,3 @@ pub enum GuestMetric {
     /// clipboard data coming from the guest
     GetClipboard(ClipboardData),
 }
-
-pub use os_info;

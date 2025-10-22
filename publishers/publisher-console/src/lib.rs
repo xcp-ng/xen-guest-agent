@@ -16,9 +16,10 @@ impl ConsolePublisher {
         match metric {
             GuestMetric::OperatingSystem(os_info) => {
                 println!(
-                    "OS: {} - Version: {}",
-                    os_info.os_info.os_type(),
-                    os_info.os_info.version()
+                    "OS: {} {} - Version: {}",
+                    os_info.os_base_info.os_type,
+                    os_info.os_base_info.os_name,
+                    os_info.os_base_info.os_version
                 );
                 if let Some(KernelInfo { release }) = &os_info.kernel_info {
                     println!("Kernel version: {release}");

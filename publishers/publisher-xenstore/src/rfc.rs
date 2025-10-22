@@ -37,12 +37,15 @@ impl<XS: Xs + 'static> XenstoreRfc<XS> {
         xs_publish(
             &self.xs,
             "data/os/name",
-            &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
+            &format!(
+                "{} {}",
+                info.os_base_info.os_type, info.os_base_info.os_version
+            ),
         )?;
         xs_publish(
             &self.xs,
             "data/os/version",
-            &info.os_info.version().to_string(),
+            &info.os_base_info.os_version.to_string(),
         )?;
         xs_publish(&self.xs, "data/os/class", "unix")?;
         if let Some(kernel_info) = &info.kernel_info {

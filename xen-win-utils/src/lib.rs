@@ -10,7 +10,7 @@ pub mod overlapped;
 pub mod pipe_talker;
 pub mod windows_debug_logger;
 
-pub fn get_version() -> windows::core::Result<String> {
+pub fn get_version() -> windows::core::Result<(u32, u32, u32)> {
     let mut version = OSVERSIONINFOW {
         dwOSVersionInfoSize: size_of::<OSVERSIONINFOW>() as u32,
         ..Default::default()
@@ -19,8 +19,9 @@ pub fn get_version() -> windows::core::Result<String> {
         let ntstatus = RtlGetVersion(&mut version);
         ntstatus.ok()?;
     }
-    Ok(format!(
-        "{0}.{1}.{2}",
-        version.dwMajorVersion, version.dwMinorVersion, version.dwBuildNumber
+    Ok((
+        version.dwMajorVersion,
+        version.dwMinorVersion,
+        version.dwBuildNumber,
     ))
 }
