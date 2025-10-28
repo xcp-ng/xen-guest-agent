@@ -5,12 +5,12 @@ use windows::Win32::{
     System::Memory::{GlobalLock, GlobalSize, GlobalUnlock, LocalSize},
 };
 
-pub struct GlobalLockGuard<'a, T> {
+pub struct GlobalLockGuard<T> {
     hmem: HGLOBAL,
-    data: &'a mut [T],
+    data: *mut [T],
 }
 
-impl<'a, T> GlobalLockGuard<'a, T> {
+impl<T> GlobalLockGuard<T> {
     pub fn lock(hmem: HGLOBAL) -> windows::core::Result<Self> {
         let p = unsafe { GlobalLock(hmem) } as *mut T;
         if p.is_null() {
@@ -24,15 +24,15 @@ impl<'a, T> GlobalLockGuard<'a, T> {
     }
 
     pub fn get(&self) -> &[T] {
-        self.data
+        unsafe { &*self.data }
     }
 
     pub fn get_mut(&mut self) -> &mut [T] {
-        self.data
+        unsafe { &mut *self.data }
     }
 }
 
-impl<'a, T> Drop for GlobalLockGuard<'a, T> {
+impl<T> Drop for GlobalLockGuard<T> {
     fn drop(&mut self) {
         unsafe {
             let _ = GlobalUnlock(self.hmem);
@@ -41,12 +41,12 @@ impl<'a, T> Drop for GlobalLockGuard<'a, T> {
 }
 
 /// This struct is only safe to use with LMEM_FIXED pointers!
-pub struct LocalPointer<'a, T> {
-    data: &'a mut [T],
+pub struct LocalPointer<T> {
+    data: *mut [T],
 }
 
-impl<'a, T> LocalPointer<'a, T> {
-    pub unsafe fn slice_from_raw_mut(p: *mut T) -> LocalPointer<'a, T> {
+impl<T> LocalPointer<T> {
+    pub unsafe fn slice_from_raw_mut(p: *mut T) -> LocalPointer<T> {
         assert!(!p.is_null());
         let len_bytes = LocalSize(HLOCAL(p.cast()));
         assert!(len_bytes > 0);
@@ -56,7 +56,7 @@ impl<'a, T> LocalPointer<'a, T> {
         }
     }
 
-    pub unsafe fn from_raw_mut(p: *mut T) -> LocalPointer<'a, T> {
+    pub unsafe fn from_raw_mut(p: *mut T) -> LocalPointer<T> {
         assert!(!p.is_null());
         LocalPointer {
             data: core::slice::from_raw_parts_mut(p, 1),
@@ -64,24 +64,24 @@ impl<'a, T> LocalPointer<'a, T> {
     }
 }
 
-impl<'a, T> Drop for LocalPointer<'a, T> {
+impl<T> Drop for LocalPointer<T> {
     fn drop(&mut self) {
         unsafe {
-            let _ = LocalFree(Some(HLOCAL(self.data.as_mut_ptr().cast())));
+            let _ = LocalFree(Some(HLOCAL(self.data.cast())));
         }
     }
 }
 
-impl<'a, T> Deref for LocalPointer<'a, T> {
+impl<T> Deref for LocalPointer<T> {
     type Target = [T];
 
     fn deref(&self) -> &Self::Target {
-        self.data
+        unsafe { &*self.data }
     }
 }
 
-impl<'a, T> DerefMut for LocalPointer<'a, T> {
+impl<T> DerefMut for LocalPointer<T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.data
+        unsafe { &mut *self.data }
     }
 }
