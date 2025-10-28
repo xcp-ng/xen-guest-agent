@@ -13,25 +13,25 @@ use windows::{
 };
 
 type NtCreateWaitCompletionPacket = unsafe extern "system" fn(
-    WaitCompletionPacketHandle: *mut HANDLE,
-    DesiredAccess: u32,
-    ObjectAttributes: *const OBJECT_ATTRIBUTES,
+    wait_completion_packet_handle: *mut HANDLE,
+    desired_access: u32,
+    object_attributes: *const OBJECT_ATTRIBUTES,
 ) -> NTSTATUS;
 
 type NtAssociateWaitCompletionPacket = unsafe extern "system" fn(
-    WaitCompletionPacketHandle: HANDLE,
-    IoCompletionHandle: HANDLE,
-    TargetObjectHandle: HANDLE,
-    KeyContext: *mut c_void,
-    ApcContext: *mut c_void,
-    IoStatus: NTSTATUS,
-    IoStatusInformation: usize,
-    AlreadySignaled: *mut BOOL,
+    wait_completion_packet_handle: HANDLE,
+    io_completion_handle: HANDLE,
+    target_object_handle: HANDLE,
+    key_context: *mut c_void,
+    apc_context: *mut c_void,
+    io_status: NTSTATUS,
+    io_status_information: usize,
+    already_signaled: *mut BOOL,
 ) -> NTSTATUS;
 
 type NtCancelWaitCompletionPacket = unsafe extern "system" fn(
-    WaitCompletionPacketHandle: HANDLE,
-    RemoveSignaledPacket: BOOL,
+    wait_completion_packet_handle: HANDLE,
+    remove_signaled_packet: BOOL,
 ) -> NTSTATUS;
 
 pub struct WaitCompletionHandle {
