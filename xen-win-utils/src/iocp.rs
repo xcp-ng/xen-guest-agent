@@ -49,11 +49,11 @@ impl CompletionHelpers {
         unsafe {
             let ntdll = LoadLibraryW(w!("ntdll.dll"))?;
             let create_fn = GetProcAddress(ntdll, s!("NtCreateWaitCompletionPacket"))
-                .ok_or(windows::core::Error::from_win32())?;
+                .ok_or(windows::core::Error::from_thread())?;
             let associate_fn = GetProcAddress(ntdll, s!("NtAssociateWaitCompletionPacket"))
-                .ok_or(windows::core::Error::from_win32())?;
+                .ok_or(windows::core::Error::from_thread())?;
             let cancel_fn = GetProcAddress(ntdll, s!("NtCancelWaitCompletionPacket"))
-                .ok_or(windows::core::Error::from_win32())?;
+                .ok_or(windows::core::Error::from_thread())?;
             Ok(CompletionHelpers {
                 nt_create_wait_completion_packet: std::mem::transmute(create_fn),
                 nt_associate_wait_completion_packet: std::mem::transmute(associate_fn),

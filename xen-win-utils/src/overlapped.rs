@@ -64,7 +64,7 @@ pub fn windowed_wait(
         assert!(timeout_msec != INFINITE);
         Ok(WindowedWaitResult::Timeout)
     } else {
-        return Err(windows::core::Error::from_win32().into());
+        return Err(windows::core::Error::from_thread().into());
     }
 }
 

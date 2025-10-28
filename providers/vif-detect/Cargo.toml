@@ -9,4 +9,4 @@ guest-metrics = { path = "../../guest-metrics" }
 
 [target.'cfg(target_os = "windows")'.dependencies]
 xenstore-rs = "0.8"
-xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", branch = "xcp-ng-9.1", features = ["smol"] }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "7995ca20e501cba0b9a6f204e2749d426deb272d", features = ["smol"] }

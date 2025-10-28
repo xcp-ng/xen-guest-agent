@@ -12,11 +12,11 @@ log = "0.4"
 flume = "0.11"
 
 [target."cfg(windows)".dependencies]
-windows = {version = "0.61", features = [
+windows = {version = "0.62", features = [
     "Win32_System_Pipes",
     "Win32_System_RemoteDesktop",
     "Win32_System_IO",
 ]}
 windows-service = "0.8"
 xen-win-utils = { path = "../../xen-win-utils" }
-xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", branch = "xcp-ng-9.1", features = ["smol"] }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "7995ca20e501cba0b9a6f204e2749d426deb272d", features = ["smol"] }

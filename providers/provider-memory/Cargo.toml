@@ -10,4 +10,4 @@ flume = "0.11.1"
 smol = "2.0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+windows = { version = "0.62", features = ["Win32_System_SystemInformation"] }

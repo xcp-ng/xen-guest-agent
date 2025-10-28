@@ -52,7 +52,7 @@ impl App {
 
             let atom = RegisterClassExW(&wcex);
             if atom == 0 {
-                return Err(windows::core::Error::from_win32().into());
+                return Err(windows::core::Error::from_thread().into());
             }
 
             let hwnd = CreateWindowExW(

@@ -14,7 +14,7 @@ impl<T> GlobalLockGuard<T> {
     pub fn lock(hmem: HGLOBAL) -> windows::core::Result<Self> {
         let p = unsafe { GlobalLock(hmem) } as *mut T;
         if p.is_null() {
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
         let len_bytes = unsafe { GlobalSize(hmem) };
         assert!(len_bytes > 0);

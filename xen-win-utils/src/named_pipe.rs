@@ -154,7 +154,7 @@ impl NamedPipe {
             ))
         };
         if pipe.is_invalid() {
-            return Err(windows::core::Error::from_win32());
+            return Err(windows::core::Error::from_thread());
         }
 
         NamedPipe::new(pipe, overlapped, true, evented)
