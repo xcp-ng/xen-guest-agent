@@ -1044,12 +1044,14 @@ name = "provider-os"
 version = "0.6.0-dev"
 dependencies = [
  "flume",
+ "futures",
  "guest-metrics",
  "os_info",
  "smol",
  "uname",
  "wmi",
  "xen-win-utils",
+ "xenstore-win",
 ]
 
 [[package]]
@@ -1870,7 +1872,7 @@ dependencies = [
 [[package]]
 name = "xenstore-win"
 version = "0.2.0"
-source = "git+https://github.com/xcp-ng/xenstore-win.git?rev=7995ca20e501cba0b9a6f204e2749d426deb272d#7995ca20e501cba0b9a6f204e2749d426deb272d"
+source = "git+https://github.com/xcp-ng/xenstore-win.git?rev=5c78252427bffb1f8397ec9901c9c4da3b6af987#5c78252427bffb1f8397ec9901c9c4da3b6af987"
 dependencies = [
  "async-io",
  "futures",
