@@ -10,6 +10,7 @@ members = [
   "guest-metrics",
   "providers/provider-os",
   "providers/provider-memory",
+  "providers/vif-detect",
   #"providers/provider-netlink",
   "providers/provider-simple",
   "publishers/publisher-xenstore",
