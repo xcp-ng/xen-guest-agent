@@ -8,24 +8,12 @@ use std::net::IpAddr;
 use uuid::Uuid;
 use xenstore_rs::{AsyncWatch, AsyncXs};
 
-use crate::{
-    version::{AGENT_VERSION_BUILD, AGENT_VERSION_MAJOR, AGENT_VERSION_MICRO, AGENT_VERSION_MINOR},
-    xs_watch_oneshot_async,
-};
-
-use super::{xs_publish_async, xs_unpublish_async};
+use crate::{xs_publish, xs_unpublish, xs_watch_oneshot_async};
 
 pub struct XenstoreStd<XS: AsyncXs + AsyncWatch + 'static> {
     xs: XS,
     // use of integer indices for IP addresses requires to keep a mapping
     ip_addresses: IpList,
-
-    // control/feature-balloon is a control node of XAPI's squeezed,
-    // and gets created by the guest because xenopsd sets ~/control/
-    // with domain ownership.  OTOH libxl creates it readonly, so we
-    // catch the case where it is so to avoid uselessly retrying.
-    #[cfg(not(windows))]
-    forbidden_control_feature_balloon: bool,
 
     ifaces: HashMap<Uuid, NetInterface>,
 }
@@ -44,8 +32,6 @@ impl<XS: AsyncXs + AsyncWatch + 'static> XenstoreStd<XS> {
         XenstoreStd {
             xs,
             ip_addresses,
-            #[cfg(not(windows))]
-            forbidden_control_feature_balloon: false,
             ifaces: HashMap::new(),
         }
     }
@@ -57,36 +43,14 @@ fn iface_prefix(iface_id: u32) -> String {
 
 impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
     #[cfg(not(windows))]
-    async fn publish_control_balloon(&mut self) -> io::Result<()> {
-        if !self.forbidden_control_feature_balloon {
-            // we may want to be more clever some day, e.g. by
-            // checking if the guest indeed has ballooning, and if the
-            // balloon driver has reached the requested initial
-            // `~/memory/target` value (or, possibly, to rely on the
-            // balloon driver to do the job of signaling this
-            // condition)
-            match xs_publish_async(&self.xs, "control/feature-balloon", "1").await {
-                Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
-                    log::warn!("cannot write control/feature-balloon (impacts XAPI's squeezed)");
-                    self.forbidden_control_feature_balloon = true;
-                }
-                Ok(_) => (),
-                e => return e,
-            }
-        }
-
-        Ok(())
-    }
-
-    #[cfg(not(windows))]
     async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
-        xs_publish_async(
+        xs_publish(
             &self.xs,
             "data/os_distro",
             &info.os_info.os_type().to_string(),
         )
         .await?;
-        xs_publish_async(
+        xs_publish(
             &self.xs,
             "data/os_name",
             &format!("{} {}", info.os_info.os_type(), info.os_info.version()),
@@ -97,7 +61,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
 
     #[cfg(windows)]
     async fn publish_osinfo_distro(&mut self, info: &OsInfo) -> io::Result<()> {
-        xs_publish_async(
+        xs_publish(
             &self.xs,
             "data/os_distro",
             &info.os_info.os_type().to_string(),
@@ -114,7 +78,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
                 info.os_info.bitness()
             ),
         };
-        xs_publish_async(&self.xs, "data/os_name", &name_string).await?;
+        xs_publish(&self.xs, "data/os_name", &name_string).await?;
         Ok(())
     }
 
@@ -125,9 +89,9 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
         let os_version = info.os_info.version();
         match os_version {
             os_info::Version::Semantic(major, minor, patch) => {
-                xs_publish_async(&self.xs, "data/os_majorver", &major.to_string()).await?;
-                xs_publish_async(&self.xs, "data/os_minorver", &minor.to_string()).await?;
-                xs_publish_async(&self.xs, "data/os_buildver", &patch.to_string()).await?;
+                xs_publish(&self.xs, "data/os_majorver", &major.to_string()).await?;
+                xs_publish(&self.xs, "data/os_minorver", &minor.to_string()).await?;
+                xs_publish(&self.xs, "data/os_buildver", &patch.to_string()).await?;
             }
             _ => {
                 // FIXME what to do with strings?
@@ -140,38 +104,61 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
 
     async fn publish_osinfo(&mut self, info: &OsInfo) -> io::Result<()> {
         // FIXME this is not anywhere standard, just minimal XS compatibility
-        xs_publish_async(&self.xs, "attr/PVAddons/Installed", "1").await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MajorVersion", AGENT_VERSION_MAJOR).await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MinorVersion", AGENT_VERSION_MINOR).await?;
-        xs_publish_async(&self.xs, "attr/PVAddons/MicroVersion", AGENT_VERSION_MICRO).await?;
-        let agent_version_build = if AGENT_VERSION_BUILD.is_empty() {
-            &format!("proto-{}", &env!("CARGO_PKG_VERSION"))
-        } else {
-            AGENT_VERSION_BUILD
+        xs_publish(&self.xs, "attr/PVAddons/Installed", "1").await?;
+        xs_publish(
+            &self.xs,
+            "attr/PVAddons/MajorVersion",
+            env!("CARGO_PKG_VERSION_MAJOR"),
+        )
+        .await?;
+        xs_publish(
+            &self.xs,
+            "attr/PVAddons/MinorVersion",
+            env!("CARGO_PKG_VERSION_MINOR"),
+        )
+        .await?;
+        xs_publish(
+            &self.xs,
+            "attr/PVAddons/MicroVersion",
+            env!("CARGO_PKG_VERSION_PATCH"),
+        )
+        .await?;
+        let build_version = {
+            let package_pre = env!("CARGO_PKG_VERSION_PRE");
+            let vendor = option_env!("GUEST_AGENT_VENDOR");
+
+            let build_pre = if package_pre.is_empty() {
+                "stable"
+            } else {
+                package_pre
+            };
+
+            if let Some(vendor) = vendor {
+                &format!("{build_pre}-{vendor}")
+            } else {
+                build_pre
+            }
         };
-        xs_publish_async(&self.xs, "attr/PVAddons/BuildVersion", &agent_version_build).await?;
+        xs_publish(&self.xs, "attr/PVAddons/BuildVersion", build_version).await?;
 
         self.publish_osinfo_distro(info).await?;
         self.publish_osinfo_version(info).await?;
 
         if let Some(kernel_info) = &info.kernel_info {
-            xs_publish_async(&self.xs, "data/os_uname", &kernel_info.release).await?;
+            xs_publish(&self.xs, "data/os_uname", &kernel_info.release).await?;
         }
-
-        #[cfg(not(windows))]
-        self.publish_control_balloon().await?;
 
         Ok(())
     }
 
     async fn publish_memory(&mut self, mem_info: &MemoryInfo) -> io::Result<()> {
-        xs_publish_async(
+        xs_publish(
             &self.xs,
             "data/meminfo_free",
             &(mem_info.mem_free / 1024).to_string(),
         )
         .await?;
-        xs_publish_async(
+        xs_publish(
             &self.xs,
             "data/meminfo_total",
             &(mem_info.mem_total / 1024).to_string(),
@@ -199,7 +186,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
         match &event.op {
             NetEventOp::AddIp(address) => {
                 let key_suffix = self.munged_address(address, iface_id)?;
-                xs_publish_async(
+                xs_publish(
                     &self.xs,
                     &format!("{xs_iface_prefix}/{key_suffix}"),
                     &address.to_string(),
@@ -208,7 +195,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
             }
             NetEventOp::RmIp(address) => {
                 let key_suffix = self.munged_address(address, iface_id)?;
-                xs_unpublish_async(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}")).await?;
+                xs_unpublish(&self.xs, &format!("{xs_iface_prefix}/{key_suffix}")).await?;
             }
 
             // FIXME extend IfaceIpStruct for this
@@ -223,7 +210,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
     }
 
     async fn report_clipboard_one(xs: &XS, data: &str) -> io::Result<()> {
-        xs_publish_async(xs, "data/report_clipboard", data).await?;
+        xs_publish(xs, "data/report_clipboard", data).await?;
         xs_watch_oneshot_async(xs, "data/report_clipboard").await?;
         Ok(())
     }
@@ -259,7 +246,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
 
     async fn cleanup_ifaces(&mut self) -> io::Result<()> {
         // Currently only vif interfaces are cleaned
-        xs_unpublish_async(&self.xs, "attr/vif").await
+        xs_unpublish(&self.xs, "attr/vif").await
     }
 
     fn munged_address(&mut self, addr: &IpAddr, iface_index: u32) -> io::Result<String> {
@@ -290,7 +277,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
                 GuestMetric::CleanupIfaces => self.cleanup_ifaces().await?,
                 GuestMetric::AddIface(net_interface) => {
                     if let ToolstackNetInterface::Vif(iface_id) = net_interface.toolstack_iface {
-                        xs_publish_async(&self.xs, &iface_prefix(iface_id), "").await?;
+                        xs_publish(&self.xs, &iface_prefix(iface_id), "").await?;
                     }
 
                     self.ifaces.insert(net_interface.uuid, net_interface);
@@ -298,7 +285,7 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
                 GuestMetric::RmIface(uuid) => {
                     if let Some(interface) = self.ifaces.remove(&uuid) {
                         if let ToolstackNetInterface::Vif(iface_id) = interface.toolstack_iface {
-                            xs_unpublish_async(&self.xs, &iface_prefix(iface_id)).await?;
+                            xs_unpublish(&self.xs, &iface_prefix(iface_id)).await?;
                         }
                     }
                 }

@@ -1,14 +1,14 @@
 [package]
 name = "provider-os"
-edition = "2021"
+edition.workspace = true
 version.workspace = true
 repository.workspace = true
 categories.workspace = true
 
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
-smol = "2.0.2"
-flume = "0.11.1"
+smol.workspace = true
+flume.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 uname = "0.1.1"

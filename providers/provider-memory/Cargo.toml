@@ -1,13 +1,13 @@
 [package]
 name = "provider-memory"
-version = "0.1.0"
-edition = "2021"
+version .workspace = true
+edition .workspace = true
 
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
-futures = "0.3"
-flume = "0.11.1"
-smol = "2.0.2"
+futures .workspace = true
+flume .workspace = true
+smol .workspace = true
 
 [target.'cfg(target_os = "windows")'.dependencies]
-windows = { version = "0.61", features = ["Win32_System_SystemInformation"] }
+windows = { workspace = true, features = ["Win32_System_SystemInformation"] }

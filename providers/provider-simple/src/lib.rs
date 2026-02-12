@@ -1,10 +1,13 @@
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use futures::StreamExt;
-use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric, NetEvent, NetEventOp, NetInterface};
+use futures::{FutureExt, StreamExt};
+use guest_metrics::{
+    plugin::{GuestAgentPlugin, Shared},
+    vif::VifDetector,
+    GuestMetric, NetEvent, NetEventOp, NetInterface,
+};
 use network_interface::{NetworkInterface, NetworkInterfaceConfig};
 use uuid::Uuid;
-use vif_detect::{PlatformVifDetector, VifDetector};
 
 #[derive(Default)]
 pub struct SimpleNetworkPlugin {
@@ -13,19 +16,29 @@ pub struct SimpleNetworkPlugin {
 }
 
 impl GuestAgentPlugin for SimpleNetworkPlugin {
-    async fn run(mut self, channel: flume::Sender<guest_metrics::GuestMetric>) {
+    async fn run(mut self, shared: Arc<Shared>, channel: flume::Sender<GuestMetric>) {
         let mut timer = smol::Timer::interval(Duration::from_secs_f32(5.0));
-        let vif_detector = PlatformVifDetector::default();
+        let vif_detector = &shared.vif_detector;
+        let mut live_migration_stream = shared.live_migration_stream();
 
         loop {
-            self.track_interfaces(&vif_detector, &channel).await;
+            self.track_interfaces(vif_detector, &channel).await;
 
-            timer.next().await;
+            futures::select! {
+                _ = timer.next().fuse() => (),
+                // Wipe cached state on live migration (we may resend the same info)
+                _ = live_migration_stream.next().fuse() => self.flush()
+            };
         }
     }
 }
 
 impl SimpleNetworkPlugin {
+    pub fn flush(&mut self) {
+        self.interfaces.clear();
+        self.uuid_map.clear();
+    }
+
     async fn track_interfaces(
         &mut self,
         vif_detector: &impl VifDetector,
@@ -70,6 +83,7 @@ impl SimpleNetworkPlugin {
                     name: interface.name.clone(),
                     toolstack_iface: vif_detector
                         .get_toolstack_interface(&interface.name, interface.mac_addr.as_deref())
+                        .await
                         .unwrap_or_default(),
                 }))
                 .await

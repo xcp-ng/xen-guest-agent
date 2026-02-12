@@ -1,4 +1,4 @@
-use guest_metrics::ToolstackNetInterface;
+use crate::ToolstackNetInterface;
 
 #[derive(Default)]
 pub struct FreebsdVifDetector;

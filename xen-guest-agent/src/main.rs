@@ -3,18 +3,27 @@ mod publisher;
 #[cfg(windows)]
 mod windows_service_main;
 
+use std::sync::Arc;
+
 use clap::Parser;
+use event_listener::Event;
 use flume::Receiver;
 use futures::future::{join_all, select};
 use log::LevelFilter;
-use smol::Executor;
 
-use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric};
+use guest_metrics::{
+    plugin::{GuestAgentPlugin, Shared},
+    GuestMetric,
+};
 use plugins::{NetworkPlugin, NetworkPluginKind};
 use publisher::{AgentPublisher, PublisherKind};
 
+use smol::Executor;
 #[cfg(windows)]
 use xen_win_utils::windows_debug_logger::WindowsDebugLogger;
+use xenstore_rs::smol::XsSmol;
+
+use crate::plugins::{build_platform_vif_detector, VifDetectionMethod};
 
 const MEM_PERIOD_SECONDS: f64 = 5.0;
 
@@ -42,10 +51,29 @@ struct GuestAgentConfig {
     #[arg(long, value_enum, default_value_t = Default::default())]
     network: NetworkPluginKind,
 
+    /// Method to use to idenfity vifs
+    #[arg(long, value_enum, default_value_t = Default::default())]
+    vif_detect: VifDetectionMethod,
+
     /// Run as a Windows service.
     #[cfg(windows)]
     #[arg(long)]
     service: bool,
+}
+
+async fn build_shared(config: &GuestAgentConfig) -> Arc<Shared> {
+    let executor: Executor<'static> = Executor::new();
+    let xs = XsSmol::new(&executor)
+        .await
+        .inspect_err(|e| log::warn!("xenstore is not available: {e}"))
+        .ok();
+
+    Arc::new(Shared {
+        live_migration_event: Event::new(),
+        executor,
+        vif_detector: build_platform_vif_detector(config.vif_detect, xs.clone()),
+        xs,
+    })
 }
 
 pub(crate) async fn run_async(
@@ -55,24 +83,30 @@ pub(crate) async fn run_async(
     let (tx, rx) = flume::bounded(4);
     let publisher = AgentPublisher::new(config.publisher)?;
     let mut tasks = vec![];
-    let executor = Executor::new();
+    let shared = build_shared(config).await;
+    let executor = &shared.executor;
 
-    tasks.push(executor.spawn(publisher.run(rx.clone())));
+    tasks.push(executor.spawn(
+        live_migration_detect::LiveMigrationDetect::XenStore.run(shared.clone(), tx.clone()),
+    ));
+    tasks.push(executor.spawn(publisher.run(shared.clone(), rx.clone())));
 
     if config.report_nics {
         // Remove old entries from previous agent to avoid having unknown
         // interfaces. We will repopulate existing ones immediatly.
         tx.send_async(GuestMetric::CleanupIfaces).await?;
-        tasks.push(executor.spawn(NetworkPlugin::new(config.network)?.run(tx.clone())));
+        tasks.push(
+            executor.spawn(NetworkPlugin::new(config.network)?.run(shared.clone(), tx.clone())),
+        );
     }
 
-    tasks.push(executor.spawn(provider_os::OsInfoPlugin.run(tx.clone())));
-    tasks.push(executor.spawn(provider_memory::MemoryPlugin.run(tx.clone())));
+    tasks.push(executor.spawn(provider_os::OsInfoPlugin.run(shared.clone(), tx.clone())));
+    tasks.push(executor.spawn(provider_memory::MemoryPlugin.run(shared.clone(), tx.clone())));
 
     #[cfg(windows)]
-    tasks.push(
-        executor.spawn(provider_clipboard::windows::WindowsClipboardPlugin::new()?.run(tx.clone())),
-    );
+    tasks.push(executor.spawn(
+        provider_clipboard::windows::WindowsClipboardPlugin::new()?.run(shared.clone(), tx.clone()),
+    ));
 
     executor
         .run(async {

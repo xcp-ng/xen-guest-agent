@@ -1,20 +1,22 @@
 [package]
 name = "xen-guest-agent"
-version = "0.5.0-dev"
-authors = ["Yann Dirson <yann.dirson@vates.fr>"]
-edition = "2021"
-rust-version = "1.76"
-license = "AGPL-3.0-only"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
 
 [dependencies]
-futures = "0.3.31"
-smol = "2.0.2"
-log = "0.4.0"
-env_logger = { version = ">=0.10.0", default-features = false }
-clap = { version = "4.4.8", features = ["derive"] }
+futures.workspace = true
+smol.workspace = true
+log.workspace = true
+flume.workspace = true
+event-listener.workspace = true
+anyhow.workspace = true
+xenstore-rs = { workspace = true, features = ["async-smol"] }
+
 enum_dispatch = "0.3"
-anyhow = "1.0"
-flume = "0.11.1"
+clap = { version = "4.4.8", features = ["derive"] }
+env_logger = { version = ">=0.10.0", default-features = false }
 
 guest-metrics = { path = "../guest-metrics" }
 
@@ -25,6 +27,8 @@ provider-memory = { path = "../providers/provider-memory" }
 provider-os = { path = "../providers/provider-os" }
 provider-simple = { path = "../providers/provider-simple" }
 provider-netlink = { path = "../providers/provider-netlink", optional = true }
+
+live-migration-detect = { path = "../providers/live-migration-detect" }
 
 [target.'cfg(target_os = "freebsd")'.dependencies]
 sysctl = "0.5.0"

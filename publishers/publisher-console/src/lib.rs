@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use guest_metrics::{
-    plugin::GuestAgentPublisher, GuestMetric, KernelInfo, NetEventOp, NetInterface,
-    ToolstackNetInterface,
+    plugin::{GuestAgentPublisher, Shared},
+    GuestMetric, KernelInfo, NetEventOp, NetInterface, ToolstackNetInterface,
 };
 use uuid::Uuid;
 
@@ -72,7 +72,7 @@ impl ConsolePublisher {
 }
 
 impl GuestAgentPublisher for ConsolePublisher {
-    async fn run(mut self, channel: flume::Receiver<GuestMetric>) {
+    async fn run(mut self, _: Arc<Shared>, channel: flume::Receiver<GuestMetric>) {
         while let Ok(msg) = channel.recv_async().await {
             self.process_message(msg)
         }

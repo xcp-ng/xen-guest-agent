@@ -1,14 +1,13 @@
 [package]
 name = "provider-simple"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 
 [dependencies]
-futures = "0.3"
 guest-metrics = { path = "../../guest-metrics" }
-uuid = { version = "1.11", features = ["v4"] }
-smol = "2.0.2"
-flume = "0.11.1"
+futures.workspace = true
+uuid = { workspace = true, features = ["v4"] }
+smol.workspace = true
+flume.workspace = true
 
-vif-detect = { path = "../vif-detect" }
 network-interface = "2.0"

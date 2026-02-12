@@ -6,6 +6,12 @@ repository.workspace = true
 categories.workspace = true
 
 [dependencies]
-flume = "0.11.1"
-uuid = "1.11"
-os_info = "3"
+flume.workspace = true
+os_info.workspace = true
+uuid.workspace = true
+event-listener.workspace = true
+futures.workspace = true
+smol.workspace = true
+log.workspace = true
+
+xenstore-rs.workspace = true

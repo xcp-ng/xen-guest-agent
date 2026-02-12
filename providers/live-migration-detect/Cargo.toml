@@ -1,18 +1,19 @@
 [package]
-name = "publisher-xenstore"
-edition.workspace = true
+name = "live-migration-detect"
 version.workspace = true
-repository.workspace = true
-categories.workspace = true
+edition.workspace = true
 
 [dependencies]
 guest-metrics = { path = "../../guest-metrics" }
-uuid.workspace = true
-flume.workspace = true
-log.workspace = true
+futures.workspace = true
+event-listener.workspace = true
 smol.workspace = true
+flume.workspace = true
+uuid.workspace = true
+anyhow.workspace = true
+log.workspace = true
+
 xenstore-rs = { workspace = true, features = ["async-smol"] }
 
-# Also use xenstore-win on Windows
 [target.'cfg(target_os = "windows")'.dependencies]
 xenstore-win = { workspace = true, features = ["smol"] }

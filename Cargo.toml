@@ -1,8 +1,17 @@
 [workspace]
-package.version = "0.6.0-dev"
+package.authors = [
+  "Teddy Astie <teddy.astie@vates.tech>",
+  "Tu Dinh <ngoc-tu.dinh@vates.tech>",
+  "Yann Dirson <yann.dirson@vates.fr>",
+]
+package.version = "1.0.0-rc1"
 package.repository = "https://gitlab.com/xen-project/xen-guest-agent"
 package.categories = ["virtualization"]
+package.keywords = ["xen"]
 package.edition = "2021"
+package.license = "AGPL-3.0-only"
+package.rust-version = "1.76"
+
 resolver = "2"
 
 members = [
@@ -10,7 +19,7 @@ members = [
   "guest-metrics",
   "providers/provider-os",
   "providers/provider-memory",
-  "providers/vif-detect",
+  "providers/live-migration-detect",
   #"providers/provider-netlink",
   "providers/provider-simple",
   "publishers/publisher-xenstore",
@@ -19,6 +28,23 @@ members = [
   "xen-win-clipboard",
 ]
 
+[workspace.dependencies]
+smol = "2.0.2"
+flume = "0.11.1"
+uuid = "1.11"
+futures = "0.3.31"
+os_info = "3"
+event-listener = "5.4.1"
+log = "0.4.0"
+anyhow = "1.0"
+
+xenstore-rs = { git = "https://github.com/xcp-ng/xenstore-rs.git", branch = "generic-async", features = [
+  "async-smol",
+] }
+
+windows = { version = "0.61" }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", branch = "xcp-ng-9.1" }
+
 [profile.release]
-lto = true
+lto = "thin"
 debug = "full"

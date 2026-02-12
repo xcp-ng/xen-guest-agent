@@ -1,7 +1,10 @@
-use std::{io, time::Duration};
+use std::{io, sync::Arc, time::Duration};
 
 use futures::StreamExt;
-use guest_metrics::{plugin::GuestAgentPlugin, MemoryInfo};
+use guest_metrics::{
+    plugin::{GuestAgentPlugin, Shared},
+    MemoryInfo,
+};
 
 #[cfg(target_os = "freebsd")]
 pub mod bsd;
@@ -30,7 +33,7 @@ pub type PlatformMemorySource = windows::WindowsMemorySource;
 pub struct MemoryPlugin;
 
 impl GuestAgentPlugin for MemoryPlugin {
-    async fn run(self, channel: flume::Sender<guest_metrics::GuestMetric>) {
+    async fn run(self, _: Arc<Shared>, channel: flume::Sender<guest_metrics::GuestMetric>) {
         let mut timer = smol::Timer::interval(Duration::from_secs_f32(5.0));
         let mut memory_source =
             PlatformMemorySource::new().expect("Unable to get memory information");

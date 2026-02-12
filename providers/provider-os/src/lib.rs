@@ -1,5 +1,9 @@
-use guest_metrics::{os_info, plugin::GuestAgentPlugin, GuestMetric, KernelInfo, OsInfo};
-use std::io;
+use guest_metrics::{
+    os_info,
+    plugin::{GuestAgentPlugin, Shared},
+    GuestMetric, KernelInfo, OsInfo,
+};
+use std::{io, sync::Arc};
 
 #[cfg(windows)]
 use xen_win_utils;
@@ -30,15 +34,20 @@ pub fn collect_kernel() -> io::Result<Option<KernelInfo>> {
 pub struct OsInfoPlugin;
 
 impl GuestAgentPlugin for OsInfoPlugin {
-    async fn run(self, channel: flume::Sender<guest_metrics::GuestMetric>) {
-        let kernel_info = collect_kernel().expect("Unable to fetch kernel information");
+    async fn run(self, shared: Arc<Shared>, channel: flume::Sender<guest_metrics::GuestMetric>) {
+        loop {
+            let live_migration_listner = shared.live_migration_event.listen();
+            let kernel_info = collect_kernel().expect("Unable to fetch kernel information");
 
-        channel
-            .send_async(GuestMetric::OperatingSystem(OsInfo {
-                os_info: os_info::get(),
-                kernel_info,
-            }))
-            .await
-            .ok();
+            channel
+                .send_async(GuestMetric::OperatingSystem(OsInfo {
+                    os_info: os_info::get(),
+                    kernel_info,
+                }))
+                .await
+                .ok();
+
+            live_migration_listner.await;
+        }
     }
 }

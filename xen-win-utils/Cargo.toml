@@ -6,7 +6,7 @@ rust-version = "1.76"
 license = "AGPL-3.0-only"
 
 [dependencies]
-log = "0.4.0"
+log.workspace = true
 windows = { version = "0.61", features = [
   "Win32_Foundation",
   "Win32_Security_Authorization",

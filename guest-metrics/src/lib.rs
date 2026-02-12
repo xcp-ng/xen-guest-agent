@@ -1,4 +1,5 @@
 pub mod plugin;
+pub mod vif;
 
 use std::net::IpAddr;
 

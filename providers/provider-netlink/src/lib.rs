@@ -1,7 +1,10 @@
-use std::{collections::HashMap, io};
+use std::{collections::HashMap, io, sync::Arc};
 
-use guest_metrics::{plugin::GuestAgentPlugin, GuestMetric, NetEvent, NetEventOp, NetInterface};
-use vif_detect::VifDetector;
+use guest_metrics::{
+    plugin::{GuestAgentPlugin, Shared},
+    vif::VifDetector,
+    GuestMetric, NetEvent, NetEventOp, NetInterface,
+};
 
 use futures::{channel::mpsc::UnboundedReceiver, StreamExt};
 use uuid::Uuid;
@@ -46,9 +49,9 @@ impl NetlinkConnection {
 pub struct NetlinkPlugin;
 
 impl GuestAgentPlugin for NetlinkPlugin {
-    async fn run(self, channel: flume::Sender<GuestMetric>) {
+    async fn run(self, shared: Arc<Shared>, channel: flume::Sender<GuestMetric>) {
         let connection = NetlinkConnection::new().unwrap();
-        let vif_identify = vif_detect::PlatformVifDetector::default();
+        let vif_identify = &shared.vif_detector;
         let mut interfaces = HashMap::new();
 
         // Create the netlink message that requests the links to be dumped
@@ -88,7 +91,7 @@ impl GuestAgentPlugin for NetlinkPlugin {
         while let Some(msg) = stream.next().await {
             if let NetlinkPayload::InnerMessage(inner_msg) = msg.payload {
                 if let Err(e) =
-                    process_message(inner_msg, &channel, &vif_identify, &mut interfaces).await
+                    process_message(inner_msg, &channel, vif_identify, &mut interfaces).await
                 {
                     log::error!("Unable to process netlink message: {e}");
                 }
@@ -131,8 +134,9 @@ async fn process_message(
                     _ => None,
                 });
 
-            let Some(toolstack_iface) =
-                vif_identify.get_toolstack_interface(ifname, mac.as_deref())
+            let Some(toolstack_iface) = vif_identify
+                .get_toolstack_interface(ifname, mac.as_deref())
+                .await
             else {
                 log::debug!("Unknown interface {ifname} (mac: {mac:?})");
                 return Ok(());

@@ -1,6 +1,9 @@
-use std::io;
+use std::{io, sync::Arc};
 
-use guest_metrics::{plugin::GuestAgentPublisher, GuestMetric};
+use guest_metrics::{
+    plugin::{GuestAgentPublisher, Shared},
+    GuestMetric,
+};
 use publisher_console::ConsolePublisher;
 use publisher_xenstore::{XenstoreRfcPublisher, XenstoreStdPublisher};
 
@@ -27,11 +30,11 @@ impl AgentPublisher {
         }
     }
 
-    pub async fn run(self, channel: flume::Receiver<GuestMetric>) {
+    pub async fn run(self, shared: Arc<Shared>, channel: flume::Receiver<GuestMetric>) {
         match self {
-            AgentPublisher::Console(publisher) => publisher.run(channel).await,
-            AgentPublisher::XenstoreRfc(publisher) => publisher.run(channel).await,
-            AgentPublisher::XenstoreStd(publisher) => publisher.run(channel).await,
+            AgentPublisher::Console(publisher) => publisher.run(shared, channel).await,
+            AgentPublisher::XenstoreRfc(publisher) => publisher.run(shared, channel).await,
+            AgentPublisher::XenstoreStd(publisher) => publisher.run(shared, channel).await,
         }
     }
 }

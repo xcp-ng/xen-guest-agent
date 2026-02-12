@@ -1,6 +1,5 @@
-use std::fs;
-
-use guest_metrics::ToolstackNetInterface;
+use crate::ToolstackNetInterface;
+use smol::fs;
 
 use super::VifDetector;
 
@@ -13,7 +12,7 @@ use super::VifDetector;
 pub struct LinuxVifDetector;
 
 impl VifDetector for LinuxVifDetector {
-    fn get_toolstack_interface(
+    async fn get_toolstack_interface(
         &self,
         iface_name: &str,
         _mac_addr: Option<&str>,
@@ -21,6 +20,7 @@ impl VifDetector for LinuxVifDetector {
         // FIXME: using ETHTOOL ioctl could be better
         let device_path = format!("/sys/class/net/{iface_name}/device");
         let Some(devtype) = fs::read_to_string(format!("{device_path}/devtype"))
+            .await
             .inspect_err(|e| log::debug!("reading {device_path}/devtype: {e}"))
             .ok()
         else {
@@ -32,6 +32,7 @@ impl VifDetector for LinuxVifDetector {
         };
 
         let nodename = fs::read_to_string(format!("{device_path}/nodename"))
+            .await
             .inspect_err(|e| log::error!("reading {device_path}/nodename: {e}"))
             .ok()?;
         let nodename = nodename.trim();
