@@ -119,7 +119,9 @@ impl WindowsClipboardPlugin {
 
             select! {
                 _ = xs_fut => {
-                    Self::do_set_clipboard(&xs_smol, &mut lines, &my_sender, SendHandle(send_event.0)).await?;
+                    let _ = Self::do_set_clipboard(&xs_smol, &mut lines, &my_sender, SendHandle(send_event.0))
+                        .await
+                        .inspect_err(|e| log::error!("do_set_clipboard error {e}"));
                 }
                 guest_data = guest_fut => {
                     if let Ok(guest_clipboard) = guest_data {

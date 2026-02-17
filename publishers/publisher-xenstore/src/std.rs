@@ -265,37 +265,48 @@ impl<XS: AsyncXs + AsyncWatch> XenstoreStd<XS> {
         }
     }
 
-    pub async fn run(mut self, channel: flume::Receiver<GuestMetric>) -> io::Result<()> {
-        while let Ok(metric) = channel.recv_async().await {
-            match metric {
-                GuestMetric::OperatingSystem(os_info) => self.publish_osinfo(&os_info).await?,
-                GuestMetric::Memory(memory_info) => self.publish_memory(&memory_info).await?,
-                GuestMetric::Network(net_event) => self.publish_netevent(&net_event).await?,
-                GuestMetric::CleanupIfaces => self.cleanup_ifaces().await?,
-                GuestMetric::AddIface(net_interface) => {
-                    if let ToolstackNetInterface::Vif(iface_id) = net_interface.toolstack_iface {
-                        xs_publish_async(&self.xs, &iface_prefix(iface_id), "").await?;
-                    }
+    async fn run_once(&mut self, channel: &flume::Receiver<GuestMetric>) -> io::Result<()> {
+        let metric = channel
+            .recv_async()
+            .await
+            .map_err(|_| io::ErrorKind::BrokenPipe)?;
+        match metric {
+            GuestMetric::OperatingSystem(os_info) => self.publish_osinfo(&os_info).await?,
+            GuestMetric::Memory(memory_info) => self.publish_memory(&memory_info).await?,
+            GuestMetric::Network(net_event) => self.publish_netevent(&net_event).await?,
+            GuestMetric::CleanupIfaces => self.cleanup_ifaces().await?,
+            GuestMetric::AddIface(net_interface) => {
+                if let ToolstackNetInterface::Vif(iface_id) = net_interface.toolstack_iface {
+                    xs_publish_async(&self.xs, &iface_prefix(iface_id), "").await?;
+                }
 
-                    self.ifaces.insert(net_interface.uuid, net_interface);
-                }
-                GuestMetric::RmIface(uuid) => {
-                    if let Some(interface) = self.ifaces.remove(&uuid) {
-                        if let ToolstackNetInterface::Vif(iface_id) = interface.toolstack_iface {
-                            xs_unpublish_async(&self.xs, &iface_prefix(iface_id)).await?;
-                        }
+                self.ifaces.insert(net_interface.uuid, net_interface);
+            }
+            GuestMetric::RmIface(uuid) => {
+                if let Some(interface) = self.ifaces.remove(&uuid) {
+                    if let ToolstackNetInterface::Vif(iface_id) = interface.toolstack_iface {
+                        xs_unpublish_async(&self.xs, &iface_prefix(iface_id)).await?
+                    } else {
+                        ()
                     }
-                }
-                GuestMetric::GetClipboard(clipboard) => {
-                    let _ = self
-                        .publish_clipboard(&clipboard)
-                        .await
-                        .inspect_err(|e| log::error!("cannot publish clipboard: {e}"));
+                } else {
+                    ()
                 }
             }
-        }
-
+            GuestMetric::GetClipboard(clipboard) => self
+                .publish_clipboard(&clipboard)
+                .await
+                .inspect_err(|e| log::error!("cannot publish clipboard: {e}"))?,
+        };
         Ok(())
+    }
+
+    pub async fn run(mut self, channel: flume::Receiver<GuestMetric>) -> io::Result<()> {
+        loop {
+            if let Err(e) = self.run_once(&channel).await {
+                log::error!("Cannot publish to xenstore: {e}");
+            }
+        }
     }
 }
 
