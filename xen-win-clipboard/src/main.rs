@@ -35,8 +35,8 @@ const MAX_MESSAGE_SIZE: u32 = 65535;
 const MAX_WRITE_QUEUE_SIZE: u32 = 262143;
 
 struct App {
-    client: PipeTalker,
     hwnd: HWND,
+    client: Option<PipeTalker>,
 }
 
 impl App {
@@ -73,23 +73,56 @@ impl App {
             hwnd
         };
 
+        let mut app = Box::new(Self { hwnd, client: None });
+        let _ = app
+            .reconnect()
+            .inspect_err(|e| log::error!("Cannot open initial connection: {e}"));
+        unsafe { SetWindowLongPtrW(app.hwnd, GWLP_USERDATA, &mut *app as *mut Self as isize) };
+
+        Ok(app)
+    }
+
+    fn reconnect(&mut self) -> windows::core::Result<()> {
+        let hwnd = self.hwnd;
         let client = PipeTalker::open(
             CLIPBOARD_PIPE_SERVER_PATH,
             MAX_MESSAGE_SIZE,
             MAX_WRITE_QUEUE_SIZE,
             true,
-        )?;
+        )
+        .inspect_err(|e| log::error!("Cannot open pipe: {e}"))?;
+        self.client.replace(client);
 
-        let mut result = Box::new(Self { client, hwnd });
-        unsafe {
-            SetWindowLongPtrW(
-                result.hwnd,
-                GWLP_USERDATA,
-                &mut *result as *mut Self as isize,
-            )
-        };
+        let _ = self
+            .with_pipe(|client| {
+                while client.begin_read()? {
+                    if let Some(msg) = client.end_read()? {
+                        Self::on_pipe_msg(hwnd, msg)?;
+                    }
+                }
+                Ok(())
+            })
+            .inspect_err(|e| log::error!("Pipe initial pump failed: {e}"));
 
-        Ok(result)
+        Ok(())
+    }
+
+    fn with_pipe(
+        &mut self,
+        f: impl FnOnce(&mut PipeTalker) -> windows::core::Result<()>,
+    ) -> windows::core::Result<bool> {
+        if let Some(client) = self.client.as_mut() {
+            match f(client) {
+                Ok(_) => Ok(true),
+                Err(e) => {
+                    log::error!("Pipe error, closing: {e}");
+                    drop(self.client.take());
+                    Err(e)
+                }
+            }
+        } else {
+            Ok(false)
+        }
     }
 
     fn on_clipboard_update(
@@ -111,9 +144,14 @@ impl App {
         let str: String = char::decode_utf16(cb_text.iter().copied().take_while(|c| *c != 0u16))
             .map(|r| r.unwrap_or(char::REPLACEMENT_CHARACTER))
             .collect();
-        if self.client.queue_write(Some(str.as_bytes()))? {
-            while self.client.queue_write(None)? {}
-        }
+        let _ = self
+            .with_pipe(|client| {
+                if client.queue_write(Some(str.as_bytes()))? {
+                    while client.queue_write(None)? {}
+                }
+                Ok(())
+            })
+            .inspect_err(|e| log::error!("Clipboard update failed: {e}"));
 
         Ok(LRESULT(0))
     }
@@ -175,21 +213,33 @@ impl App {
     }
 
     fn run(&mut self) -> windows::core::Result<ExitCode> {
-        let handles = unsafe {
-            [
-                self.client.get_read_event().unwrap(),
-                self.client.get_write_event().unwrap(),
-            ]
-        };
-        while self.client.begin_read()? {
-            if let Some(msg) = self.client.end_read()? {
-                Self::on_pipe_msg(self.hwnd, msg)?;
-            }
-        }
-        let mut msg = MSG::default();
+        const RECONNECT_DELAY_MSEC: u32 = 10000;
 
         loop {
-            match windowed_wait(Some(&handles), INFINITE, QS_ALLINPUT, false, true, false)? {
+            let mut msg = MSG::default();
+            let mut handles: Option<[HANDLE; 2]> = None;
+            let mut timeout = RECONNECT_DELAY_MSEC;
+
+            let _ = self.with_pipe(|client| {
+                handles = Some(unsafe {
+                    [
+                        client.get_read_event().unwrap(),
+                        client.get_write_event().unwrap(),
+                    ]
+                });
+                timeout = INFINITE;
+
+                Ok(())
+            });
+
+            match windowed_wait(
+                handles.as_ref().map(|h| h.as_slice()),
+                timeout,
+                QS_ALLINPUT,
+                false,
+                true,
+                false,
+            )? {
                 WindowedWaitResult::Input => {
                     if let Some(value) = self.on_window_msg(&mut msg) {
                         return Ok(value);
@@ -197,20 +247,39 @@ impl App {
                 }
                 // pump the pipe again
                 WindowedWaitResult::Handle(0) => {
-                    if let Some(msg) = self.client.end_read()? {
-                        Self::on_pipe_msg(self.hwnd, msg)?;
-                    }
-                    while self.client.begin_read()? {
-                        if let Some(msg) = self.client.end_read()? {
-                            Self::on_pipe_msg(self.hwnd, msg)?;
-                        }
-                    }
+                    let hwnd = self.hwnd;
+                    let _ = self
+                        .with_pipe(|client| {
+                            if let Some(msg) = client.end_read()? {
+                                Self::on_pipe_msg(hwnd, msg)?;
+                            }
+                            while client.begin_read()? {
+                                if let Some(msg) = client.end_read()? {
+                                    Self::on_pipe_msg(hwnd, msg)?;
+                                }
+                            }
+                            Ok(())
+                        })
+                        .inspect_err(|e| log::error!("Pipe read failed: {e}"));
                 }
                 WindowedWaitResult::Handle(1) => {
-                    self.client.end_write()?;
-                    while self.client.queue_write(None)? {}
+                    let _ = self
+                        .with_pipe(|client| {
+                            client.end_write()?;
+                            while client.queue_write(None)? {}
+                            Ok(())
+                        })
+                        .inspect_err(|e| log::error!("Pipe write failed: {e}"));
                 }
-                _ => unreachable!(),
+                WindowedWaitResult::Timeout => {
+                    if self.client.is_none() {
+                        // Reconnection may fail
+                        let _ = self.reconnect();
+                    }
+                }
+                _ => {
+                    log::error!("Unexpected windowed wait state");
+                }
             }
         }
     }
