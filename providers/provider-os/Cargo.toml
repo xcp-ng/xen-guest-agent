@@ -18,4 +18,4 @@ os_info = "3"
 futures = "0.3.31"
 wmi = "0.17"
 xen-win-utils = { path = "../../xen-win-utils" }
-xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "603ee6807341725d14315a94954e337517794855", features = ["smol"] }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "b7ee0b6d37f4ede1739cce2f3dd4fc51cf9f462b", features = ["smol"] }
