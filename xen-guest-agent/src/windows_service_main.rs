@@ -1,7 +1,5 @@
 use std::time::Duration;
 
-use clap::Parser;
-
 use windows_service::service::{
     ServiceControl, ServiceControlAccept, ServiceExitCode, ServiceState, ServiceStatus, ServiceType,
 };
@@ -42,7 +40,7 @@ fn service_main() -> anyhow::Result<()> {
     log::info!("Service starting");
 
     let service_result: anyhow::Result<()> = smol::block_on(async {
-        let config = GuestAgentConfig::parse();
+        let config: GuestAgentConfig = argh::from_env();
         run_async(&config, stop_rx).await?;
         Ok(())
     });
