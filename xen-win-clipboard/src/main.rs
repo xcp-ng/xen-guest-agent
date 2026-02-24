@@ -35,8 +35,8 @@ const MAX_MESSAGE_SIZE: u32 = 65535;
 const MAX_WRITE_QUEUE_SIZE: u32 = 262143;
 
 struct App {
-    hwnd: HWND,
     client: Option<PipeTalker>,
+    hwnd: HWND,
 }
 
 impl App {
