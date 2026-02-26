@@ -3,4 +3,4 @@ git = "https://github.com/xcp-ng/rust-libc.git"
 #branch = "freebsd-netlink-0.2"
 # cannot specify a cargo feature here, so use a version exposing
 # freebsd-netlink support without needing a feature
-rev = "7d8b8eb219ad39f13cce5611eb4a823e2390fb00"
+rev = "2c307d8d067c1e53b3a1e2141da9e567aeb865e4"
