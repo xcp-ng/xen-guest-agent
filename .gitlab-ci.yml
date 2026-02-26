@@ -366,7 +366,7 @@ pkg-source:
 
 pkg-deb-amd64:
   stage: package
-  image: docker.io/library/debian:10
+  image: docker.io/library/debian:11
   extends:
     - .not-scheduled
   needs:
