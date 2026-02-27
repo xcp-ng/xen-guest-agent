@@ -16,10 +16,14 @@ workflow:
     - if: $CI_COMMIT_TAG
 
 variables:
-  RUST_MIN_VERSION: "1.77-buster"
-  RUST_REL_VERSION: "1.79-buster"
+  RUST_MIN_VERSION: "1.88-bullseye"
+  RUST_REL_VERSION: "1.88-bullseye"
   LINUX_RUSTIMG: "docker.io/library/rust:${RUST_VERSION}"
   PKG_ROOT: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic"
+  FREEBSD_VERSION: "13"
+  FREEBSD_CROSSRS_IMGSEL: "@sha256:358c8b4c1db00f6375f5b847e2383e2d2a95f1ea8f6a4a78aa083535c09a8506"
+  WINDOWS_CROSSRS_IMGSEL: ":main"
+  AARCH64_CROSSRS_IMGSEL: ":main"
 
 .build-template:
   stage: build-check
@@ -41,19 +45,20 @@ variables:
 .cross-build-template:
   extends:
     - .build-template
-  image: ghcr.io/cross-rs/$CARGO_BUILD_TARGET:main
+  image: ghcr.io/cross-rs/$CARGO_BUILD_TARGET$CROSSRS_IMGSEL
   before_script:
     # install Rust
     - curl --silent --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path
     - . "$HOME/.cargo/env"
     - rustup target add $CARGO_BUILD_TARGET
 
-.cross-freebsd13-x86_64-build-template:
+.cross-freebsd$FREEBSD_VERSION-x86_64-build-template:
   extends:
     - .cross-build-template
   variables:
     CARGO_BUILD_TARGET: "x86_64-unknown-freebsd"
-    CROSS_SYSROOT: "/usr/local/x86_64-unknown-freebsd13"
+    CROSS_SYSROOT: "/usr/local/x86_64-unknown-freebsd$FREEBSD_VERSION"
+    CROSSRS_IMGSEL: "$FREEBSD_CROSSRS_IMGSEL"
   before_script:
     - !reference [.cross-build-template,before_script]
     # cross sysroot does not match its toolchain
@@ -72,6 +77,7 @@ variables:
     - .cross-build-template
   variables:
     CARGO_BUILD_TARGET: "x86_64-pc-windows-gnu"
+    CROSSRS_IMGSEL: "$WINDOWS_CROSSRS_IMGSEL"
 
 .cross-linux-aarch64-build-template:
   extends:
@@ -79,6 +85,7 @@ variables:
   variables:
     CARGO_BUILD_TARGET: "aarch64-unknown-linux-gnu"
     BINDGEN_EXTRA_CLANG_ARGS_aarch64_unknown_linux_gnu: "--sysroot=/usr/aarch64-linux-gnu -idirafter/usr/include"
+    CROSSRS_IMGSEL: "$AARCH64_CROSSRS_IMGSEL"
 
 .only-scheduled:
   rules:
@@ -236,24 +243,24 @@ build-release-linux-x86_64:
     paths:
       - target/release/xen-guest-agent
 
-build-freebsd13-x86_64:
+build-freebsd$FREEBSD_VERSION-x86_64:
   parallel: !reference [.featurematrix.no-netlink,parallel]
   extends:
-    - .cross-freebsd13-x86_64-build-template
+    - .cross-freebsd$FREEBSD_VERSION-x86_64-build-template
     - .not-scheduled
   variables:
     CARGO_FLAGS: "-v"
 
-build-freebsd13-netlink-x86_64:
+build-freebsd$FREEBSD_VERSION-netlink-x86_64:
   variables:
     FEATURES: ""
   extends:
-    - .cross-freebsd13-x86_64-build-template
+    - .cross-freebsd$FREEBSD_VERSION-x86_64-build-template
     - .not-scheduled
   variables:
     CARGO_FLAGS: "-v"
   before_script:
-    - !reference [.cross-freebsd13-x86_64-build-template,before_script]
+    - !reference [.cross-freebsd$FREEBSD_VERSION-x86_64-build-template,before_script]
     - mkdir .cargo
     - cp devscripts/cargo-freebsd-netlink.toml .cargo/config.toml
     - cargo update -p libc -p rtnetlink
@@ -265,10 +272,10 @@ build-freebsd13-netlink-x86_64:
     paths:
       - target/x86_64-unknown-freebsd/debug/xen-guest-agent
 
-build-release-freebsd13-x86_64:
+build-release-freebsd$FREEBSD_VERSION-x86_64:
   stage: release-build
   extends:
-    - .cross-freebsd13-x86_64-build-template
+    - .cross-freebsd$FREEBSD_VERSION-x86_64-build-template
     - .not-scheduled
   variables:
     FEATURES: "--no-default-features -F xenstore,net_pnet"
@@ -320,14 +327,14 @@ build-latest-linux:
     # (but as of v16.9 it still won't be run on timeout or cancel)
     - git checkout HEAD Cargo.toml
 
-build-latest-freebsd13-x86_64:
+build-latest-freebsd$FREEBSD_VERSION-x86_64:
   parallel: !reference [.featurematrix.no-netlink,parallel]
   extends:
-    - .cross-freebsd13-x86_64-build-template
+    - .cross-freebsd$FREEBSD_VERSION-x86_64-build-template
   variables:
     CARGO_FLAGS: "-v"
   before_script:
-    - !reference [".cross-freebsd13-x86_64-build-template", "before_script"]
+    - !reference [".cross-freebsd$FREEBSD_VERSION-x86_64-build-template", "before_script"]
     - mv Cargo.lock Cargo.lock.current
   after_script:
     # show which dependencies changed in Cargo.lock
@@ -359,7 +366,7 @@ pkg-source:
 
 pkg-deb-amd64:
   stage: package
-  image: docker.io/library/debian:10
+  image: docker.io/library/debian:11
   extends:
     - .not-scheduled
   needs:
