@@ -90,7 +90,7 @@ impl App {
             MAX_WRITE_QUEUE_SIZE,
             true,
         )
-        .inspect_err(|e| log::error!("Cannot open pipe: {e}"))?;
+        .inspect_err(|e| log::debug!("Cannot open pipe: {e}"))?;
         self.client.replace(client);
 
         let _ = self
