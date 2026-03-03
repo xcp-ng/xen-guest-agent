@@ -289,7 +289,10 @@ fn main() -> anyhow::Result<ExitCode> {
     log::set_boxed_logger(Box::new(WindowsDebugLogger {
         prefix: "[xen-win-clipboard]".to_string(),
     }))?;
+    #[cfg(debug_assertions)]
     log::set_max_level(log::LevelFilter::Trace);
+    #[cfg(not(debug_assertions))]
+    log::set_max_level(log::LevelFilter::Info);
 
     let single = NamedMutexGuard::new(Some("Local\\XenWinClipboardAgent"), true)?;
     if let None = single {
