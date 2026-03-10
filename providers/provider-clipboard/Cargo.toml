@@ -19,4 +19,4 @@ windows = {version = "0.62", features = [
 ]}
 windows-service = "0.8"
 xen-win-utils = { path = "../../xen-win-utils" }
-xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "c69a572a820029651437aa1d253d3d51d3b98540", features = ["smol"] }
+xenstore-win = { git = "https://github.com/xcp-ng/xenstore-win.git", rev = "810abf29fd98082570388081d88ab40bd44a8fa8", features = ["smol"] }

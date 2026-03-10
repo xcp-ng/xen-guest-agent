@@ -1807,7 +1807,7 @@ dependencies = [
 [[package]]
 name = "xenstore-win"
 version = "0.2.0"
-source = "git+https://github.com/xcp-ng/xenstore-win.git?rev=c69a572a820029651437aa1d253d3d51d3b98540#c69a572a820029651437aa1d253d3d51d3b98540"
+source = "git+https://github.com/xcp-ng/xenstore-win.git?rev=810abf29fd98082570388081d88ab40bd44a8fa8#810abf29fd98082570388081d88ab40bd44a8fa8"
 dependencies = [
  "async-io",
  "event-listener",
