@@ -414,6 +414,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "ipnetwork"
+version = "0.21.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf370abdafd54d13e54a620e8c3e1145f28e46cc9d704bc6d94414559df41763"
+
+[[package]]
 name = "is_terminal_polyfill"
 version = "1.70.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -868,7 +874,7 @@ version = "0.35.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e79e70ec0be163102a332e1d2d5586d362ad76b01cec86f830241f2b6452a7b7"
 dependencies = [
- "ipnetwork",
+ "ipnetwork 0.20.0",
  "libc",
  "pnet_base",
  "pnet_sys",
@@ -1387,7 +1393,7 @@ dependencies = [
  "clap",
  "env_logger",
  "futures",
- "ipnetwork",
+ "ipnetwork 0.21.1",
  "libc",
  "log",
  "netlink-packet-core",
