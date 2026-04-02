@@ -23,7 +23,7 @@ clap = { version = "4.4.8", features = ["derive"] }
 # pnet 0.35 pins ipnetwork 0.20 this https://github.com/libpnet/libpnet/issues/758
 pnet_datalink = { version = "0.35", optional = true }
 pnet_base = { version = "0.35", optional = true }
-ipnetwork = { version = "0.20", optional = true }
+ipnetwork = { version = "0.21", optional = true }
 
 [dependencies.xenstore-rs]
 optional = true
