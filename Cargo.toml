@@ -18,7 +18,7 @@ async-stream = "0.3.4"
 os_info = { version = "3", default-features = false }
 log = "0.4.0"
 env_logger = ">=0.10.0"
-clap = { version = "4.4.8", features = ["derive"] }
+clap = { version = "4.6.0", features = ["derive"] }
 
 # pnet 0.35 pins ipnetwork 0.20 this https://github.com/libpnet/libpnet/issues/758
 pnet_datalink = { version = "0.35", optional = true }
